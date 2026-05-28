@@ -8,3 +8,10 @@ __pycache__
 *.pywz
 *.pyzw
 *.pyzwz
+
+.env
+.venv/
+*.egg-info/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
