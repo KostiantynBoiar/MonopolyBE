@@ -11,6 +11,9 @@ from api.router import api_router
 from core.config import get_settings
 from core.exceptions import AppError
 from core.logging import setup_logging
+from gateway.backplane import Backplane
+from gateway.manager import ConnectionManager
+from gateway.router import ws_router
 from infra.mongo.client import MongoClient
 from infra.mongo.indexes import ensure_indexes
 from infra.redis.client import RedisClient
@@ -30,12 +33,22 @@ async def lifespan(app: FastAPI):
     await redis.connect(settings)
     await ensure_indexes(mongo.db)
 
+    manager = ConnectionManager()
+    backplane = Backplane(redis_url=settings.redis_url, manager=manager)
+    await backplane.start()
+
     app.state.mongo = mongo
     app.state.redis = redis
+    app.state.manager = manager
+    app.state.backplane = backplane
 
     logger.info("application_started", app_env=settings.app_env)
 
     yield
+
+    for conn in manager.all_connections():
+        await conn.close(1001)
+    await backplane.stop()
 
     await redis.disconnect()
     await mongo.disconnect()
@@ -68,6 +81,7 @@ def create_app() -> FastAPI:
         )
 
     app.include_router(api_router, prefix="/api/v1")
+    app.include_router(ws_router)
 
     @app.get("/health")
     async def health() -> dict[str, str]:
