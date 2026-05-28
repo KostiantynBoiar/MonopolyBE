@@ -14,7 +14,10 @@ RUN pip install --no-cache-dir --upgrade pip \
         "motor>=3.6.0" \
         "redis>=5.2.0" \
         "pydantic-settings>=2.6.0" \
-        "structlog>=24.4.0"
+        "structlog>=24.4.0" \
+        "pyjwt>=2.9.0" \
+        "bcrypt>=4.2.0" \
+        "email-validator>=2.2.0"
 
 COPY src ./src
 
