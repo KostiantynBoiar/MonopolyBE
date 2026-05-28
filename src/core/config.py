@@ -28,6 +28,9 @@ class Settings(BaseSettings):
         NoDecode,
         BeforeValidator(_parse_cors_origins),
     ] = ["http://localhost:3000"]
+    jwt_secret_key: str = "change-me-in-production"
+    jwt_algorithm: str = "HS256"
+    jwt_expire_minutes: int = 60
 
 
 @lru_cache

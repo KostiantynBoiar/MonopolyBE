@@ -7,7 +7,9 @@ from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from api.router import api_router
 from core.config import get_settings
+from core.exceptions import AppError
 from core.logging import setup_logging
 from infra.mongo.client import MongoClient
 from infra.mongo.indexes import ensure_indexes
@@ -58,6 +60,15 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    @app.exception_handler(AppError)
+    async def app_error_handler(_request: Request, exc: AppError) -> JSONResponse:
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": exc.message},
+        )
+
+    app.include_router(api_router, prefix="/api/v1")
+
     @app.get("/health")
     async def health() -> dict[str, str]:
         return {"status": "ok"}
@@ -91,9 +102,6 @@ def create_app() -> FastAPI:
         body: dict[str, Any] = {"status": "ok" if not failed else "degraded", **checks}
         response_status = status.HTTP_200_OK if not failed else status.HTTP_503_SERVICE_UNAVAILABLE
         return JSONResponse(content=body, status_code=response_status)
-
-    # app.include_router(api_router, prefix="/api/v1")
-    # app.websocket("/ws")  # gateway registration point
 
     return app
 
