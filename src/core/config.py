@@ -1,14 +1,6 @@
 from functools import lru_cache
-from typing import Annotated
 
-from pydantic import BeforeValidator, field_validator
-from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
-
-
-def _parse_cors_origins(value: str | list[str]) -> list[str]:
-    if isinstance(value, str):
-        return [origin.strip() for origin in value.split(",") if origin.strip()]
-    return value
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -23,14 +15,19 @@ class Settings(BaseSettings):
     mongodb_uri: str = "mongodb://mongodb:27017"
     mongodb_db: str = "monopoly"
     redis_url: str = "redis://redis:6379/0"
-    cors_origins: Annotated[
-        list[str],
-        NoDecode,
-        BeforeValidator(_parse_cors_origins),
-    ] = ["http://localhost:3000"]
+    # Comma-separated in .env (e.g. http://localhost:3000,http://127.0.0.1:3000).
+    # Stored as str so pydantic-settings does not JSON-decode the env value.
+    cors_origins: str = "http://localhost:3000"
     jwt_secret_key: str = "change-me-in-production"
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 60
+
+    game_starting_balance: int = 1500
+    go_salary: int = 200
+    jail_fine: int = 50
+
+    def cors_origin_list(self) -> list[str]:
+        return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
 
 
 @lru_cache
