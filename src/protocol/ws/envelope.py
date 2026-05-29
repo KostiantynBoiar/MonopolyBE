@@ -17,7 +17,9 @@ def make_outbound(
     msg_type: str,
     payload: BaseModel | dict[str, Any],
 ) -> dict[str, Any]:
-    payload_dict = payload.model_dump() if isinstance(payload, BaseModel) else payload
+    payload_dict = (
+        payload.model_dump(mode="json") if isinstance(payload, BaseModel) else payload
+    )
     return {
         "v": 1,
         "type": msg_type,

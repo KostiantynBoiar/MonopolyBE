@@ -41,17 +41,20 @@ async def ws_endpoint(websocket: WebSocket, session_id: str) -> None:
 
     session_service = SessionService.from_db(websocket.app.state.mongo.db)
     try:
-        await session_service.assert_member(session_id, user_id)
+        session = await session_service.assert_member(session_id, user_id)
     except NotMemberError:
         await websocket.close(code=4403)
         return
+
+    member = session.get_member(user_id)
+    display_name = member.display_name if member else user_id
 
     await websocket.accept()
 
     manager: ConnectionManager = websocket.app.state.manager
     backplane: Backplane = websocket.app.state.backplane
 
-    conn = Connection(websocket, session_id, user_id)
+    conn = Connection(websocket, session_id, user_id, display_name)
     manager.register(conn)
     await backplane.subscribe(session_id)
 

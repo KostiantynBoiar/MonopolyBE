@@ -21,6 +21,15 @@ def _chat_send(text: str) -> str:
     })
 
 
+def _sticker_send(sticker_url: str) -> str:
+    return json.dumps({
+        "v": 1,
+        "type": "chat.sticker_send",
+        "ts": datetime.now(UTC).isoformat(),
+        "payload": {"sticker_url": sticker_url},
+    })
+
+
 def test_chat_round_trip_single_node(
     client: TestClient, registered_user: tuple
 ) -> None:
@@ -35,9 +44,53 @@ def test_chat_round_trip_single_node(
         msg = ws.receive_json()
 
         assert msg["type"] == "chat.message"
-        assert msg["payload"]["text"] == "Hello, world!"
-        assert msg["payload"]["from_user_id"] == user_id
+        payload = msg["payload"]
+        assert payload["text"] == "Hello, world!"
+        assert payload["from_user_id"] == user_id
+        # Enriched fields: stable id, sender's display name, payload-level timestamp.
+        assert payload["display_name"] == "Ws"  # register_user("ws") -> "Ws"
+        assert isinstance(payload["message_id"], str) and payload["message_id"]
+        assert isinstance(payload["ts"], str) and payload["ts"]
         assert isinstance(msg["seq"], int)
+
+
+def test_sticker_round_trip(client: TestClient, registered_user: tuple) -> None:
+    user_id, token, session_id = registered_user
+    with client.websocket_connect(
+        f"/ws/sessions/{session_id}",
+        headers=_ws_headers(token),
+    ) as ws:
+        ws.receive_json()  # welcome
+
+        ws.send_text(_sticker_send("/stickers/kolobki/012.tgs"))
+        msg = ws.receive_json()
+
+        assert msg["type"] == "chat.sticker"
+        payload = msg["payload"]
+        assert payload["sticker_url"] == "/stickers/kolobki/012.tgs"
+        assert payload["from_user_id"] == user_id
+        assert payload["display_name"] == "Ws"
+        assert isinstance(payload["message_id"], str) and payload["message_id"]
+        assert isinstance(payload["ts"], str) and payload["ts"]
+        assert isinstance(msg["seq"], int)
+
+
+def test_sticker_invalid_url_rejected(
+    client: TestClient, registered_user: tuple
+) -> None:
+    _user_id, token, session_id = registered_user
+    with client.websocket_connect(
+        f"/ws/sessions/{session_id}",
+        headers=_ws_headers(token),
+    ) as ws:
+        ws.receive_json()  # welcome
+
+        # Absolute URL is outside the /stickers/<pack>/<file> allowlist.
+        ws.send_text(_sticker_send("http://evil.example/x.png"))
+        msg = ws.receive_json()
+
+        assert msg["type"] == "system.error"
+        assert msg["payload"]["code"] == "malformed"
 
 
 def test_chat_delivered_to_both_clients(

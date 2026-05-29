@@ -355,7 +355,20 @@ After connect, the first message is `system.welcome`. Send a chat message (JSON 
 }
 ```
 
-You receive `chat.message` with `seq`, `from_user_id`, and `text`.
+You receive `chat.message` with `seq` plus an enriched payload
+(`message_id`, `from_user_id`, `display_name`, `text`, `ts`) — enough to render the
+author without a second lookup. See [Chat message](#chat-message-server-broadcast).
+
+Send a sticker the same way with `chat.sticker_send`; you receive a `chat.sticker` broadcast:
+
+```json
+{
+  "v": 1,
+  "type": "chat.sticker_send",
+  "ts": "2026-05-29T12:00:00+00:00",
+  "payload": { "sticker_url": "/stickers/kolobki/012.tgs" }
+}
+```
 
 ### 5. Host starts the game
 
@@ -410,6 +423,10 @@ All frames are **JSON text**. Common shape:
 | `idempotency_key` | optional | Reserved; dedupe not implemented yet |
 | `payload` | yes | Type-specific object |
 
+> **Field casing:** the wire format is **`snake_case`** for both REST and WebSocket
+> (`from_user_id`, `display_name`, `invite_code`, …). This matches the existing FE auth client;
+> transform to `camelCase` at the FE boundary (e.g. in your Zod schemas) if your feature code prefers it.
+
 ### Message types (v1)
 
 | Direction | `type` | `payload` |
@@ -418,7 +435,10 @@ All frames are **JSON text**. Common shape:
 | Server → client | `connection.ping` | `{}` |
 | Client → server | `connection.pong` | `{}` |
 | Client → server | `chat.send` | `text` (1–1000 chars) |
-| Server → client | `chat.message` | `from_user_id`, `text` (+ `seq`) |
+| Server → client | `chat.message` | `message_id`, `from_user_id`, `display_name`, `text`, `ts` (+ `seq`) |
+| Client → server | `chat.sticker_send` | `sticker_url` (must match `^/stickers/[\w-]+/[\w.-]+$`, ≤256 chars) |
+| Server → client | `chat.sticker` | `message_id`, `from_user_id`, `display_name`, `sticker_url`, `ts` (+ `seq`) |
+| Server → client | `session.updated` | `session` (full `SessionDetail`; `your_role` is always `null` — derive your own role from `session.members`) |
 | Server → client | `system.error` | `code`, `message`, optional `ref_seq` |
 
 **Welcome** (first message after accept):
@@ -456,11 +476,90 @@ All frames are **JSON text**. Common shape:
   "ts": "...",
   "seq": 1,
   "payload": {
+    "message_id": "9f1c0d8e4b7a4a2e9c3f5d6a7b8c9d0e",
     "from_user_id": "...",
-    "text": "Hello, world!"
+    "display_name": "Host",
+    "text": "Hello, world!",
+    "ts": "2026-05-29T12:00:00.123456+00:00"
   }
 }
 ```
+
+> **Payload fields**
+> - `message_id` — server-generated UUID (hex). Use it as a stable React key and for client-side dedupe.
+> - `display_name` — resolved from the sender's session membership; render this directly.
+> - `ts` — server timestamp inside the payload (mirrors the envelope `ts`). The envelope `seq` is a separate monotonic ordering key.
+> - The server does **not** send a token/avatar color. Map `from_user_id` → color/avatar on the client using the member list from `SessionDetail`.
+
+**Sticker send** (client):
+
+```json
+{
+  "v": 1,
+  "type": "chat.sticker_send",
+  "ts": "2026-05-29T12:00:00+00:00",
+  "payload": { "sticker_url": "/stickers/kolobki/012.tgs" }
+}
+```
+
+`sticker_url` must be a `/stickers/<pack>/<file>` path served by the frontend (validated against
+`^/stickers/[\w-]+/[\w.-]+$`, max 256 chars). Anything else — absolute URLs, traversal, extra
+segments — is rejected as a `malformed` error.
+
+**Sticker message** (server broadcast):
+
+```json
+{
+  "v": 1,
+  "type": "chat.sticker",
+  "ts": "...",
+  "seq": 2,
+  "payload": {
+    "message_id": "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d",
+    "from_user_id": "...",
+    "display_name": "Host",
+    "sticker_url": "/stickers/kolobki/012.tgs",
+    "ts": "2026-05-29T12:00:05.000000+00:00"
+  }
+}
+```
+
+**Session updated** (server broadcast):
+
+Sent to every connected member whenever membership changes — on **join**, **leave**
+(including automatic host hand-off), **kick**, and **start**. Use it to live-refresh the
+lobby roster, host badge, and `status` without polling.
+
+```json
+{
+  "v": 1,
+  "type": "session.updated",
+  "ts": "...",
+  "seq": 3,
+  "payload": {
+    "session": {
+      "id": "...",
+      "invite_code": "TYC-A1B2",
+      "status": "waiting",
+      "visibility": "public",
+      "member_count": 2,
+      "max_players": 8,
+      "host": { "id": "...", "display_name": "Host" },
+      "created_at": "...",
+      "members": [
+        { "user_id": "...", "display_name": "Host", "role": "host", "joined_at": "..." },
+        { "user_id": "...", "display_name": "Guest", "role": "player", "joined_at": "..." }
+      ],
+      "your_role": null
+    }
+  }
+}
+```
+
+> `your_role` is always `null` in this broadcast because the same frame goes to every member.
+> Compute your role client-side by matching your `user_id` against `session.members[].role`.
+> Note: a kicked member is **not** force-disconnected from the socket yet — the `session.updated`
+> frame is the client's signal to leave the room view.
 
 ### Heartbeat
 
@@ -529,10 +628,10 @@ Session-specific cases:
 The following are intentionally out of scope for the current backend:
 
 - Game engine and turn logic
-- `session.updated` (or similar) WebSocket broadcasts when membership changes
 - Idempotency key deduplication in Redis
 - Seq replay / catch-up for reconnecting clients
 - Rate limiting on chat (error code exists but is not enforced)
+- Force-disconnecting a kicked member's open WebSocket (they receive `session.updated` instead)
 
 ---
 
@@ -566,5 +665,7 @@ Executable references:
 | REST DTOs | `src/protocol/rest/sessions.py` |
 | WS endpoint | `src/gateway/router.py` |
 | WS dispatch | `src/gateway/dispatcher.py` |
+| WS handlers (chat, sticker, pong) | `src/gateway/handlers/chat.py`, `src/gateway/handlers/__init__.py` |
+| WS message DTOs | `src/protocol/ws/messages.py` |
 | Invite codes | `src/core/invite_code.py` |
 | Exceptions | `src/core/exceptions.py` |

@@ -134,7 +134,9 @@ class SessionService:
             raise SessionNotFoundError()
         return await self._join_session(session, user_id)
 
-    async def leave(self, session_id: str, user_id: str) -> None:
+    async def leave(self, session_id: str, user_id: str) -> Session | None:
+        """Remove a member. Returns the updated session, or None if it was deleted
+        (last member left)."""
         session = await self._get_session_or_404(session_id)
         if not session.has_member(user_id):
             raise NotMemberError(session_id, user_id)
@@ -145,14 +147,18 @@ class SessionService:
 
         if not updated.members:
             await self._sessions.delete(session_id)
-            return
+            return None
 
         if updated.host_user_id == user_id:
             new_host = min(updated.members, key=lambda m: m.joined_at)
-            await self._sessions.update_host_and_member_role(
+            rehosted = await self._sessions.update_host_and_member_role(
                 session_id,
                 new_host_user_id=new_host.user_id,
             )
+            if rehosted is not None:
+                return rehosted
+
+        return updated
 
     async def kick(self, session_id: str, host_user_id: str, target_user_id: str) -> Session:
         session = await self._get_session_or_404(session_id)

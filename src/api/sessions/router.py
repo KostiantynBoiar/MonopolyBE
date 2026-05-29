@@ -1,11 +1,12 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 
 from application.dependencies import get_session_service
 from application.services.session_service import SessionService
 from core.dependencies import get_current_user_id
 from domain.session.model import Session
+from gateway.backplane import Backplane
 from protocol.rest.sessions import (
     CreateSessionRequest,
     HostSummary,
@@ -18,8 +19,21 @@ from protocol.rest.sessions import (
     SessionSummary,
     StartSessionResponse,
 )
+from protocol.ws.envelope import make_outbound
+from protocol.ws.messages import SessionUpdatedPayload
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
+
+
+def get_backplane(request: Request) -> Backplane:
+    return request.app.state.backplane
+
+
+async def _broadcast_session_updated(backplane: Backplane, session: Session) -> None:
+    # your_role is recipient-specific, so broadcast the detail without it; each
+    # client derives its role from session.members.
+    payload = SessionUpdatedPayload(session=_to_detail(session))
+    await backplane.publish(session.id, make_outbound("session.updated", payload))
 
 
 def _to_summary(session: Session) -> SessionSummary:
@@ -95,8 +109,10 @@ async def join_by_code(
     body: JoinByCodeRequest,
     user_id: Annotated[str, Depends(get_current_user_id)],
     service: Annotated[SessionService, Depends(get_session_service)],
+    backplane: Annotated[Backplane, Depends(get_backplane)],
 ) -> JoinSessionResponse:
     session = await service.join_by_code(body.invite_code, user_id)
+    await _broadcast_session_updated(backplane, session)
     return JoinSessionResponse(session=_to_detail(session, user_id))
 
 
@@ -115,8 +131,10 @@ async def join_session(
     session_id: str,
     user_id: Annotated[str, Depends(get_current_user_id)],
     service: Annotated[SessionService, Depends(get_session_service)],
+    backplane: Annotated[Backplane, Depends(get_backplane)],
 ) -> JoinSessionResponse:
     session = await service.join(session_id, user_id)
+    await _broadcast_session_updated(backplane, session)
     return JoinSessionResponse(session=_to_detail(session, user_id))
 
 
@@ -125,8 +143,11 @@ async def leave_session(
     session_id: str,
     user_id: Annotated[str, Depends(get_current_user_id)],
     service: Annotated[SessionService, Depends(get_session_service)],
+    backplane: Annotated[Backplane, Depends(get_backplane)],
 ) -> None:
-    await service.leave(session_id, user_id)
+    session = await service.leave(session_id, user_id)
+    if session is not None:
+        await _broadcast_session_updated(backplane, session)
 
 
 @router.delete("/{session_id}/members/{target_user_id}", response_model=SessionDetail)
@@ -135,8 +156,10 @@ async def kick_member(
     target_user_id: str,
     user_id: Annotated[str, Depends(get_current_user_id)],
     service: Annotated[SessionService, Depends(get_session_service)],
+    backplane: Annotated[Backplane, Depends(get_backplane)],
 ) -> SessionDetail:
     session = await service.kick(session_id, user_id, target_user_id)
+    await _broadcast_session_updated(backplane, session)
     return _to_detail(session, user_id)
 
 
@@ -145,6 +168,8 @@ async def start_session(
     session_id: str,
     user_id: Annotated[str, Depends(get_current_user_id)],
     service: Annotated[SessionService, Depends(get_session_service)],
+    backplane: Annotated[Backplane, Depends(get_backplane)],
 ) -> StartSessionResponse:
     session = await service.start(session_id, user_id)
+    await _broadcast_session_updated(backplane, session)
     return StartSessionResponse(session=_to_detail(session, user_id))

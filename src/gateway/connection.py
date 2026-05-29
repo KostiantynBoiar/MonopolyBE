@@ -30,10 +30,12 @@ class Connection:
         websocket: WebSocket,
         session_id: str,
         user_id: str,
+        display_name: str,
     ) -> None:
         self.websocket = websocket
         self.session_id = session_id
         self.user_id = user_id
+        self.display_name = display_name
         self.connection_id = uuid4().hex
         self.last_pong_ts: datetime = datetime.now(UTC)
         self._queue = SendQueue()
