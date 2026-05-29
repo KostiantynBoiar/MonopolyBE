@@ -132,7 +132,7 @@ def test_malformed_payload_shape_keeps_connection(
 
 def test_heartbeat_ping_received(client: TestClient, registered_user: tuple) -> None:
     _user_id, token, session_id = registered_user
-    with patch("gateway.connection.HEARTBEAT_INTERVAL_S", 0.1):
+    with patch("gateway.connection.WS_HEARTBEAT_INTERVAL_S", 0.1):
         with client.websocket_connect(
             f"/ws/sessions/{session_id}",
             headers=_ws_headers(token),

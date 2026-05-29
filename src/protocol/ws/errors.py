@@ -8,4 +8,5 @@ WsErrorCode = Literal[
     "unknown_type",
     "rate_limited",
     "internal",
+    "illegal_action",
 ]

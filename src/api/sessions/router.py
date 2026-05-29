@@ -2,10 +2,11 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Request
 
-from application.dependencies import get_session_service
+from application.dependencies import get_game_service, get_session_service
+from application.services.game_service import GameService
 from application.services.session_service import SessionService
 from core.dependencies import get_current_user_id
-from domain.session.model import Session
+from domain.session.schemas import Session
 from gateway.backplane import Backplane
 from protocol.rest.sessions import (
     CreateSessionRequest,
@@ -20,7 +21,7 @@ from protocol.rest.sessions import (
     StartSessionResponse,
 )
 from protocol.ws.envelope import make_outbound
-from protocol.ws.messages import SessionUpdatedPayload
+from protocol.ws.schemas import SessionUpdatedPayload
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
@@ -168,8 +169,11 @@ async def start_session(
     session_id: str,
     user_id: Annotated[str, Depends(get_current_user_id)],
     service: Annotated[SessionService, Depends(get_session_service)],
+    game_service: Annotated[GameService, Depends(get_game_service)],
     backplane: Annotated[Backplane, Depends(get_backplane)],
 ) -> StartSessionResponse:
     session = await service.start(session_id, user_id)
     await _broadcast_session_updated(backplane, session)
+    game_state = await game_service.start_game(session)
+    await backplane.publish(session_id, game_service.snapshot_message(game_state))
     return StartSessionResponse(session=_to_detail(session, user_id))

@@ -2,7 +2,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from pymongo.errors import DuplicateKeyError
 
 from core.exceptions import DuplicateEmailError
-from domain.user.model import User
+from domain.user.schemas import User
 from infra.mongo.users.mapper import document_from_mongo, document_to_mongo, to_document, to_domain
 
 

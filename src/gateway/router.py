@@ -1,6 +1,7 @@
 import structlog
 from fastapi import APIRouter, WebSocket
 
+from application.services.game_service import GameService
 from application.services.session_service import SessionService
 from core.config import get_settings
 from core.exceptions import NotMemberError, UnauthorizedError
@@ -9,7 +10,7 @@ from gateway.backplane import Backplane
 from gateway.connection import Connection
 from gateway.manager import ConnectionManager
 from protocol.ws.envelope import make_outbound
-from protocol.ws.messages import WelcomePayload
+from protocol.ws.schemas import WelcomePayload
 
 logger = structlog.get_logger(__name__)
 
@@ -64,6 +65,11 @@ async def ws_endpoint(websocket: WebSocket, session_id: str) -> None:
         WelcomePayload(session_id=session_id, your_seq_start=seq_start),
     )
     conn.enqueue(welcome)
+
+    game_service = GameService.from_db(websocket.app.state.mongo.db, get_settings())
+    game_state = await game_service.get_active_game(session_id)
+    if game_state is not None:
+        conn.enqueue(game_service.snapshot_message(game_state))
 
     logger.info(
         "ws_connected",

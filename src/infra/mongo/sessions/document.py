@@ -2,7 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
-from domain.session.model import MemberRole, SessionStatus, SessionVisibility
+from domain.session.schemas import MemberRole, SessionStatus, SessionVisibility
 
 
 class SessionMemberDocument(BaseModel):

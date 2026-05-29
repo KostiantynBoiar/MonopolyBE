@@ -1,21 +1,15 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING
 
 import structlog
 from pydantic import ValidationError
 
+from core.constants import WS_PROTOCOL_VERSION
 from gateway.handlers import HANDLERS
 from protocol.ws.envelope import RawEnvelope
 
-if TYPE_CHECKING:
-    from gateway.backplane import Backplane
-    from gateway.connection import Connection
-
 logger = structlog.get_logger(__name__)
-
-PROTOCOL_VERSION = 1
 
 
 async def dispatch(conn: Connection, raw: str, backplane: Backplane) -> None:
@@ -38,10 +32,10 @@ async def dispatch(conn: Connection, raw: str, backplane: Backplane) -> None:
         log.debug("dispatch_malformed", errors=exc.error_count())
         return
 
-    if envelope.v != PROTOCOL_VERSION:
+    if envelope.v != WS_PROTOCOL_VERSION:
         await conn.send_error_then_close(
             "unsupported_version",
-            f"Expected protocol version {PROTOCOL_VERSION}, got {envelope.v}",
+            f"Expected protocol version {WS_PROTOCOL_VERSION}, got {envelope.v}",
             4400,
         )
         return
@@ -53,7 +47,6 @@ async def dispatch(conn: Connection, raw: str, backplane: Backplane) -> None:
         return
 
     try:
-        # TODO(engine): wrap handler invocation in a per-session distributed lock
         await handler(conn, envelope, backplane)
     except ValidationError as exc:
         await conn.send_error("malformed", "Invalid payload for message type")

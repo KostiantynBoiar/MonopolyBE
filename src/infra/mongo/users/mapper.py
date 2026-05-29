@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from domain.user.model import User
+from domain.user.schemas import User
 from infra.mongo.users.document import UserDocument
 
 

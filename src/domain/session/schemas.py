@@ -3,7 +3,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict
 
-MAX_SESSION_MEMBERS = 8
+from core.constants import MAX_SESSION_MEMBERS
 
 
 class SessionStatus(StrEnum):

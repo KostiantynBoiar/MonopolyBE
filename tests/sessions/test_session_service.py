@@ -12,9 +12,9 @@ from core.exceptions import (
     SessionFullError,
     SessionNotJoinableError,
 )
-from core.invite_code import INVITE_CODE_PATTERN
+from core.invite_code import is_valid_invite_code
 from core.security import hash_password
-from domain.session.model import SessionStatus, SessionVisibility
+from domain.session.schemas import SessionStatus, SessionVisibility
 from infra.mongo.users.repository import UserRepository
 
 
@@ -29,7 +29,7 @@ async def test_create_session(
     assert session.visibility == SessionVisibility.PUBLIC
     assert session.host_user_id == host_id
     assert session.member_count() == 1
-    assert INVITE_CODE_PATTERN.match(session.invite_code)
+    assert is_valid_invite_code(session.invite_code)
 
 
 @pytest.mark.asyncio

@@ -3,7 +3,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from domain.session.model import MAX_SESSION_MEMBERS, MemberRole, SessionStatus, SessionVisibility
+from core.constants import MAX_SESSION_MEMBERS
+from domain.session.schemas import MemberRole, SessionStatus, SessionVisibility
 
 
 class CreateSessionRequest(BaseModel):

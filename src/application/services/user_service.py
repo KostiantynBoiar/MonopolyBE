@@ -5,7 +5,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from core.config import Settings
 from core.exceptions import InvalidCredentialsError, NotFoundError
 from core.security import create_access_token, hash_password, verify_password
-from domain.user.model import User
+from domain.user.schemas import User
 from infra.mongo.users.repository import UserRepository
 from protocol.rest.auth import (
     AuthResponse,

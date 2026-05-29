@@ -1,14 +1,26 @@
 import re
 import secrets
 
-INVITE_CODE_PATTERN = re.compile(r"^TYC-[A-Z0-9]{4}$")
-_CODE_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+from core.constants import (
+    INVITE_CODE_ALPHABET,
+    INVITE_CODE_PATTERN,
+    INVITE_CODE_PREFIX,
+    INVITE_CODE_SUFFIX_LENGTH,
+)
+
+_INVITE_CODE_RE = re.compile(INVITE_CODE_PATTERN)
 
 
 def generate_invite_code() -> str:
-    suffix = "".join(secrets.choice(_CODE_ALPHABET) for _ in range(4))
-    return f"TYC-{suffix}"
+    suffix = "".join(
+        secrets.choice(INVITE_CODE_ALPHABET) for _ in range(INVITE_CODE_SUFFIX_LENGTH)
+    )
+    return f"{INVITE_CODE_PREFIX}{suffix}"
 
 
 def normalize_invite_code(code: str) -> str:
     return code.strip().upper()
+
+
+def is_valid_invite_code(code: str) -> bool:
+    return _INVITE_CODE_RE.match(code) is not None

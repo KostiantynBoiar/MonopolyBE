@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from domain.session.model import Session, SessionMember, SessionStatus, SessionVisibility
+from domain.session.schemas import Session, SessionMember, SessionStatus, SessionVisibility
 from infra.mongo.sessions.document import SessionDocument, SessionMemberDocument
 
 

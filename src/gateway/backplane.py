@@ -3,14 +3,13 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import structlog
 from redis.asyncio import Redis
 from redis.asyncio.client import PubSub
 
-if TYPE_CHECKING:
-    from gateway.manager import ConnectionManager
+from gateway.manager import ConnectionManager
 
 logger = structlog.get_logger(__name__)
 

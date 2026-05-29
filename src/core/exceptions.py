@@ -73,3 +73,17 @@ class AlreadyMemberError(AppError):
         )
         self.session_id = session_id
         self.user_id = user_id
+
+
+class GameNotFoundError(NotFoundError):
+    def __init__(self, session_id: str) -> None:
+        super().__init__(f"No active game for session {session_id}")
+
+
+class GameVersionConflictError(AppError):
+    def __init__(self, session_id: str) -> None:
+        super().__init__(
+            f"Game state conflict for session {session_id}; retry with latest snapshot",
+            status_code=409,
+        )
+        self.session_id = session_id

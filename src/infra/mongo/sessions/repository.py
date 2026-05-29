@@ -4,13 +4,8 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
-from domain.session.model import (
-    MAX_SESSION_MEMBERS,
-    MemberRole,
-    Session,
-    SessionStatus,
-    SessionVisibility,
-)
+from core.constants import MAX_SESSION_MEMBERS
+from domain.session.schemas import MemberRole, Session, SessionStatus, SessionVisibility
 from infra.mongo.sessions.document import SessionDocument, SessionMemberDocument
 from infra.mongo.sessions.mapper import (
     document_from_mongo,

@@ -14,9 +14,9 @@ from core.exceptions import (
     SessionNotFoundError,
     SessionNotJoinableError,
 )
+from core.constants import MAX_SESSION_MEMBERS, SESSION_INVITE_CODE_MAX_RETRIES
 from core.invite_code import generate_invite_code, normalize_invite_code
-from domain.session.model import (
-    MAX_SESSION_MEMBERS,
+from domain.session.schemas import (
     MemberRole,
     Session,
     SessionMember,
@@ -30,8 +30,6 @@ from infra.mongo.users.repository import UserRepository
 
 
 class SessionService:
-    _MAX_CODE_RETRIES = 5
-
     def __init__(
         self,
         session_repo: SessionRepository,
@@ -61,7 +59,7 @@ class SessionService:
             joined_at=now,
         )
 
-        for _ in range(self._MAX_CODE_RETRIES):
+        for _ in range(SESSION_INVITE_CODE_MAX_RETRIES):
             doc = to_document(
                 invite_code=generate_invite_code(),
                 host_user_id=user.id,

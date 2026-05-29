@@ -3,25 +3,20 @@ from __future__ import annotations
 import asyncio
 import json
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import Any
 from uuid import uuid4
 
 import structlog
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
+from core.constants import WS_HEARTBEAT_INTERVAL_S, WS_HEARTBEAT_TIMEOUT_S
 from gateway.backpressure import SendQueue
 from gateway.dispatcher import dispatch
 from protocol.ws.envelope import make_outbound
 from protocol.ws.errors import WsErrorCode
-from protocol.ws.messages import ErrorPayload, PingPayload
-
-if TYPE_CHECKING:
-    from gateway.backplane import Backplane
+from protocol.ws.schemas import ErrorPayload, PingPayload
 
 logger = structlog.get_logger(__name__)
-
-HEARTBEAT_INTERVAL_S = 20
-HEARTBEAT_TIMEOUT_S = 25
 
 
 class Connection:
@@ -121,7 +116,7 @@ class Connection:
 
     async def _heartbeat_loop(self, log: Any) -> None:
         while True:
-            await asyncio.sleep(HEARTBEAT_INTERVAL_S)
+            await asyncio.sleep(WS_HEARTBEAT_INTERVAL_S)
             ping = make_outbound("connection.ping", PingPayload())
             ok = self._queue.put(ping)
             if not ok:
@@ -129,7 +124,7 @@ class Connection:
                 await self.close(1011)
                 return
             elapsed = (datetime.now(UTC) - self.last_pong_ts).total_seconds()
-            if elapsed > HEARTBEAT_TIMEOUT_S:
+            if elapsed > WS_HEARTBEAT_TIMEOUT_S:
                 log.info("heartbeat_timeout", elapsed=elapsed)
                 await self.close(1001)
                 return
