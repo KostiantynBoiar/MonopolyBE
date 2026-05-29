@@ -27,8 +27,12 @@ class Backplane:
         self._shutdown = False
 
     async def start(self) -> None:
-        self._cmd = Redis.from_url(self._url, decode_responses=True)
-        self._pubsub_source = Redis.from_url(self._url, decode_responses=True)
+        # health_check_interval keeps the long-lived pub/sub connection alive and
+        # lets redis-py detect a stale socket instead of hanging on idle reads.
+        self._cmd = Redis.from_url(self._url, decode_responses=True, health_check_interval=30)
+        self._pubsub_source = Redis.from_url(
+            self._url, decode_responses=True, health_check_interval=30
+        )
         self._pubsub = self._pubsub_source.pubsub()
         self._reader_task = asyncio.create_task(
             self._reader_loop(), name="backplane-reader"
@@ -78,21 +82,19 @@ class Backplane:
         backoff = 1.0
         while not self._shutdown:
             try:
-                if not self._subscriptions:
-                    await asyncio.sleep(0.1)
+                if not self._subscriptions or self._pubsub is None:
+                    await asyncio.sleep(0.2)
                     continue
-                await self._ensure_subscriptions()
-                assert self._pubsub is not None
-                async for message in self._pubsub.listen():
-                    if self._shutdown:
-                        return
-                    if message["type"] != "message":
-                        continue
-                    backoff = 1.0
-                    channel: str = message["channel"]
-                    data: str = message["data"]
-                    session_id = channel.removeprefix("session:")
-                    await self._dispatch_to_local(session_id, data)
+                message = await self._pubsub.get_message(
+                    ignore_subscribe_messages=True,
+                    timeout=1.0,
+                )
+                backoff = 1.0
+                if not message or message.get("type") != "message":
+                    continue
+                channel = str(message["channel"])
+                session_id = channel.removeprefix("session:")
+                await self._dispatch_to_local(session_id, str(message["data"]))
             except asyncio.CancelledError:
                 return
             except Exception:
@@ -100,6 +102,8 @@ class Backplane:
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, 30.0)
                 await self._reconnect_pubsub()
+                # New pub/sub object after reconnect → re-subscribe to all channels.
+                await self._ensure_subscriptions()
 
     async def _ensure_subscriptions(self) -> None:
         if self._pubsub is None:
