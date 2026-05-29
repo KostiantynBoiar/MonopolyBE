@@ -22,8 +22,7 @@ dev = [
     "ruff>=0.8.0",
     "mypy>=1.13.0",
     "httpx>=0.28.0",
-    "httpx-ws>=0.7.0",
-    "asgi-lifespan>=2.1.0",
+    "anyio>=4.10.0",
 ]
 
 [build-system]
@@ -35,6 +34,7 @@ packages = ["src"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 pythonpath = ["src"]
 

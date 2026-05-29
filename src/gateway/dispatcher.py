@@ -39,11 +39,11 @@ async def dispatch(conn: Connection, raw: str, backplane: Backplane) -> None:
         return
 
     if envelope.v != PROTOCOL_VERSION:
-        await conn.send_error(
+        await conn.send_error_then_close(
             "unsupported_version",
             f"Expected protocol version {PROTOCOL_VERSION}, got {envelope.v}",
+            4400,
         )
-        await conn.close(4400)
         return
 
     handler = HANDLERS.get(envelope.type)

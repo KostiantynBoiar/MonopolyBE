@@ -1,9 +1,9 @@
 import structlog
 from fastapi import APIRouter, WebSocket
 
-from application.services.session_service import NotMemberError, SessionService
+from application.services.session_service import SessionService
 from core.config import get_settings
-from core.exceptions import NotFoundError, UnauthorizedError
+from core.exceptions import NotMemberError, UnauthorizedError
 from core.security import decode_access_token
 from gateway.backplane import Backplane
 from gateway.connection import Connection
@@ -42,7 +42,7 @@ async def ws_endpoint(websocket: WebSocket, session_id: str) -> None:
     session_service = SessionService.from_db(websocket.app.state.mongo.db)
     try:
         await session_service.assert_member(session_id, user_id)
-    except (NotFoundError, NotMemberError):
+    except NotMemberError:
         await websocket.close(code=4403)
         return
 

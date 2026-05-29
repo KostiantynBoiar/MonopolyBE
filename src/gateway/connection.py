@@ -54,6 +54,19 @@ class Connection:
                 error_code=code,
             )
 
+    async def send_error_then_close(
+        self, code: WsErrorCode, message: str, close_code: int
+    ) -> None:
+        """Send an error on the wire, then close (for fatal protocol errors)."""
+        if self._closed:
+            return
+        msg = make_outbound("system.error", ErrorPayload(code=code, message=message))
+        try:
+            await self.websocket.send_text(json.dumps(msg))
+        except Exception:
+            pass
+        await self.close(close_code)
+
     async def close(self, code: int) -> None:
         if self._closed:
             return

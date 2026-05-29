@@ -23,3 +23,53 @@ class UnauthorizedError(AppError):
 class NotFoundError(AppError):
     def __init__(self, message: str = "Not found") -> None:
         super().__init__(message, status_code=404)
+
+
+class SessionNotFoundError(NotFoundError):
+    def __init__(self, message: str = "Session not found") -> None:
+        super().__init__(message)
+
+
+class NotMemberError(AppError):
+    def __init__(self, session_id: str, user_id: str) -> None:
+        super().__init__(
+            f"User {user_id} is not a member of session {session_id}",
+            status_code=403,
+        )
+        self.session_id = session_id
+        self.user_id = user_id
+
+
+class SessionFullError(AppError):
+    def __init__(self, session_id: str) -> None:
+        super().__init__(f"Session {session_id} is full", status_code=409)
+        self.session_id = session_id
+
+
+class SessionNotJoinableError(AppError):
+    def __init__(self, session_id: str, status: str) -> None:
+        super().__init__(
+            f"Session {session_id} is not joinable (status={status})",
+            status_code=409,
+        )
+        self.session_id = session_id
+
+
+class ForbiddenHostActionError(AppError):
+    def __init__(self, message: str = "Only the host can perform this action") -> None:
+        super().__init__(message, status_code=403)
+
+
+class CannotKickSelfError(AppError):
+    def __init__(self) -> None:
+        super().__init__("Host cannot kick themselves", status_code=400)
+
+
+class AlreadyMemberError(AppError):
+    def __init__(self, session_id: str, user_id: str) -> None:
+        super().__init__(
+            f"User {user_id} is already a member of session {session_id}",
+            status_code=409,
+        )
+        self.session_id = session_id
+        self.user_id = user_id
