@@ -84,3 +84,69 @@ class PassBuyPayload(BaseModel):
 
 class EndTurnPayload(BaseModel):
     model_config = ConfigDict(frozen=True)
+
+
+class PayJailFinePayload(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+
+class UseJailCardPayload(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+
+class BuildHousePayload(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    position: int = Field(ge=0, le=39)
+
+
+class SellHousePayload(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    position: int = Field(ge=0, le=39)
+
+
+class MortgagePayload(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    position: int = Field(ge=0, le=39)
+
+
+class UnmortgagePayload(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    position: int = Field(ge=0, le=39)
+
+
+class TradeOfferPayload(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    money: int = Field(ge=0)
+    positions: list[int] = Field(default_factory=list)
+    get_out_of_jail_cards: int = Field(default=0, ge=0)
+
+
+class ProposeTradePayload(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    target_id: str
+    proposer_offer: TradeOfferPayload
+    target_request: TradeOfferPayload
+
+
+class RespondTradePayload(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    trade_id: str
+    response: str
+    counter_offer: TradeOfferPayload | None = None
+
+
+class PlaceBidPayload(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    amount: int = Field(gt=0)
+
+
+class DeclareBankruptcyPayload(BaseModel):
+    model_config = ConfigDict(frozen=True)

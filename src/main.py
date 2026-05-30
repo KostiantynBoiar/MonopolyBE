@@ -11,6 +11,7 @@ from api.router import api_router
 from core.config import get_settings
 from core.exceptions import AppError
 from core.logging import setup_logging
+from application.services.game_scheduler import GameScheduler
 from gateway.backplane import Backplane
 from gateway.manager import ConnectionManager
 from gateway.router import ws_router
@@ -37,10 +38,14 @@ async def lifespan(app: FastAPI):
     backplane = Backplane(redis_url=settings.redis_url, manager=manager)
     await backplane.start()
 
+    scheduler = GameScheduler(mongo.db, backplane, settings)
+    await scheduler.start()
+
     app.state.mongo = mongo
     app.state.redis = redis
     app.state.manager = manager
     app.state.backplane = backplane
+    app.state.game_scheduler = scheduler
 
     logger.info("application_started", app_env=settings.app_env)
 
@@ -49,6 +54,7 @@ async def lifespan(app: FastAPI):
     for conn in manager.all_connections():
         await conn.close(1001)
     await backplane.stop()
+    await scheduler.stop()
 
     await redis.disconnect()
     await mongo.disconnect()

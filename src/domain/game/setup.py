@@ -5,9 +5,10 @@ from datetime import datetime
 from uuid import uuid4
 
 from domain.game.board_data import BOARD
-from domain.game.constants import TOKEN_COLORS
+from domain.game.constants import BANK_HOTELS, BANK_HOUSES, TOKEN_COLORS
 from domain.game.enums import GameStatus, TurnPhase
 from domain.game.rng import Clock
+from domain.game.rules.cards import initial_chance_deck, initial_chest_deck
 from domain.game.schemas.state import (
     GameState,
     PlayerState,
@@ -66,4 +67,8 @@ def new_game(
             round_number=1,
         ),
         spaces=spaces,
+        bank_houses=BANK_HOUSES,
+        bank_hotels=BANK_HOTELS,
+        chance_deck=initial_chance_deck(rng),
+        chest_deck=initial_chest_deck(rng),
     )

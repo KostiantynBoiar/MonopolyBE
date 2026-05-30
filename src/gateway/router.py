@@ -69,7 +69,7 @@ async def ws_endpoint(websocket: WebSocket, session_id: str) -> None:
     game_service = GameService.from_db(websocket.app.state.mongo.db, get_settings())
     game_state = await game_service.get_active_game(session_id)
     if game_state is not None:
-        conn.enqueue(game_service.snapshot_message(game_state))
+        conn.enqueue(game_service.snapshot_message(game_state, viewer_user_id=user_id))
 
     logger.info(
         "ws_connected",

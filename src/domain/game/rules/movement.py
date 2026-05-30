@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import random
+
 from domain.game.board_data import get_board_space, is_purchasable
-from domain.game.constants import BOARD_SIZE, JAIL_POSITION, JAIL_TURNS_INITIAL
-from domain.game.enums import CornerVariant, SpaceType, TurnPhase
+from domain.game.constants import JAIL_POSITION, JAIL_TURNS_INITIAL
+from domain.game.enums import CardKind, CornerVariant, SpaceType, TurnPhase
 from domain.game.schemas.events import PassedGo, RentPaid, SentToJail, TaxPaid
 from domain.game.schemas.state import (
     DiceRoll,
@@ -11,6 +13,7 @@ from domain.game.schemas.state import (
     PlayerState,
     TurnState,
 )
+from domain.game.rules.payments import attempt_payment
 from domain.game.rules.helpers import (
     get_player_by_id_from_state,
     refresh_all_net_worth,
@@ -21,6 +24,8 @@ from domain.game.rules.rent import calculate_rent
 
 def advance_position(from_pos: int, steps: int) -> tuple[int, bool]:
     """Return (new_position, passed_go)."""
+    from domain.game.constants import BOARD_SIZE
+
     new_pos = (from_pos + steps) % BOARD_SIZE
     passed_go = from_pos + steps >= BOARD_SIZE
     return new_pos, passed_go
@@ -41,8 +46,14 @@ def resolve_landing(
     dice_roll: DiceRoll,
     *,
     go_salary: int,
-) -> tuple[GameState, list]:
+    recursion_depth: int = 0,
+    rent_multiplier: int = 1,
+    rng: random.Random | None = None,
+    jail_fine: int = 50,
+) -> tuple[GameState, list, bool]:
+    """Resolve landing. Returns (state, events, sent_to_jail)."""
     events: list = []
+    sent_to_jail = False
     board_space = get_board_space(player.position)
     players = list(state.players)
     spaces = list(state.spaces)
@@ -62,12 +73,18 @@ def resolve_landing(
             )
         )
         turn = turn.model_copy(update={"pending_buy_position": None, "phase": phase})
-        return _finalize(state, players, spaces, turn, events)
+        return _finalize(state, players, spaces, turn, events), events, True
 
     if board_space.type == SpaceType.TAX and board_space.tax_amount is not None:
-        idx = _player_index(players, player.id)
-        updated = player.model_copy(update={"balance": player.balance - board_space.tax_amount})
-        players[idx] = update_player_net_worth(updated, tuple(spaces))
+        state_tmp = _finalize(state, players, spaces, turn, events)
+        state_tmp, pay_events = attempt_payment(
+            state_tmp, player.id, board_space.tax_amount, creditor_id=None
+        )
+        events.extend(pay_events)
+        if state_tmp.bankruptcy is not None:
+            turn = state_tmp.turn.model_copy(update={"phase": TurnPhase.BANKRUPT_RESOLUTION})
+            return state_tmp.model_copy(update={"turn": turn}), events, sent_to_jail
+        updated = get_player_by_id_from_state(state_tmp, player.id)
         events.append(
             TaxPaid(
                 player_id=player.id,
@@ -78,7 +95,29 @@ def resolve_landing(
             )
         )
         turn = turn.model_copy(update={"pending_buy_position": None, "phase": phase})
-        return _finalize(state, players, spaces, turn, events)
+        return _finalize(state_tmp, list(state_tmp.players), list(state_tmp.spaces), turn, events), events, sent_to_jail
+
+    if board_space.type in (SpaceType.CHANCE, SpaceType.CHEST) and rng is not None:
+        from domain.game.rules.cards import draw_and_apply
+
+        kind = CardKind.CHANCE if board_space.type == SpaceType.CHANCE else CardKind.COMMUNITY_CHEST
+        state_tmp = _finalize(state, players, spaces, turn, events)
+        state_tmp, card_events, active_card, card_jail = draw_and_apply(
+            state_tmp,
+            get_player_by_id_from_state(state_tmp, player.id),
+            kind,
+            rng=rng,
+            dice_roll=dice_roll,
+            go_salary=go_salary,
+            jail_fine=jail_fine,
+            recursion_depth=recursion_depth,
+        )
+        events.extend(card_events)
+        turn = state_tmp.turn
+        if card_jail:
+            turn = turn.model_copy(update={"phase": TurnPhase.POST_ROLL, "doubles_streak": 0})
+            return state_tmp.model_copy(update={"active_card": active_card, "turn": turn}), events, True
+        return state_tmp.model_copy(update={"active_card": active_card}), events, sent_to_jail
 
     ownership = spaces[player.position]
     if (
@@ -93,13 +132,16 @@ def resolve_landing(
             spaces=tuple(spaces),
             players=state.players,
             dice_total=dice_roll.die1 + dice_roll.die2,
+            rent_multiplier=rent_multiplier,
         )
-        payer_idx = _player_index(players, player.id)
-        owner_idx = _player_index(players, owner.id)
-        payer = players[payer_idx].model_copy(update={"balance": player.balance - rent})
-        receiver = players[owner_idx].model_copy(update={"balance": owner.balance + rent})
-        players[payer_idx] = update_player_net_worth(payer, tuple(spaces))
-        players[owner_idx] = update_player_net_worth(receiver, tuple(spaces))
+        state_tmp = _finalize(state, players, spaces, turn, events)
+        state_tmp, pay_events = attempt_payment(
+            state_tmp, player.id, rent, creditor_id=owner.id
+        )
+        events.extend(pay_events)
+        if state_tmp.bankruptcy is not None:
+            turn = state_tmp.turn.model_copy(update={"phase": TurnPhase.BANKRUPT_RESOLUTION})
+            return state_tmp.model_copy(update={"turn": turn}), events, sent_to_jail
         events.append(
             RentPaid(
                 payer_id=player.id,
@@ -111,7 +153,12 @@ def resolve_landing(
                 amount=rent,
             )
         )
-        phase = TurnPhase.MUST_PAY_RENT
+        # Return state_tmp (which has the deducted balances from attempt_payment),
+        # not a new _finalize from original state/players which would discard them.
+        final_turn = state_tmp.turn.model_copy(
+            update={"pending_buy_position": None, "phase": TurnPhase.MUST_PAY_RENT}
+        )
+        return state_tmp.model_copy(update={"turn": final_turn}), events, sent_to_jail
 
     elif is_purchasable(player.position) and ownership.owner_id is None:
         pending_buy = player.position
@@ -122,7 +169,7 @@ def resolve_landing(
             "phase": phase,
         }
     )
-    return _finalize(state, players, spaces, turn, events)
+    return _finalize(state, players, spaces, turn, events), events, sent_to_jail
 
 
 def apply_go_salary(
@@ -156,7 +203,7 @@ def _finalize(
     spaces: list,
     turn: TurnState,
     events: list,
-) -> tuple[GameState, list]:
+) -> GameState:
     new_state = state.model_copy(
         update={
             "players": refresh_all_net_worth(
@@ -166,4 +213,4 @@ def _finalize(
             "turn": turn,
         }
     )
-    return new_state, events
+    return new_state

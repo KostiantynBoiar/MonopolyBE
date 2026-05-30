@@ -27,6 +27,7 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 import httpx
+import pytest
 import websockets
 
 BASE_URL = os.environ.get("E2E_BASE_URL", "http://localhost:8002").rstrip("/")
@@ -142,14 +143,25 @@ async def run_game_flow() -> None:
                 actions = state["turn"]["actions_available"]
                 if actions["can_roll"]:
                     intent = "game.roll_dice"
+                    payload = None
                 elif actions["can_buy"]:
-                    intent = "game.pass_buy"  # decline to keep cash flow simple
+                    intent = "game.buy_property"
+                    payload = {"position": state["turn"]["pending_buy_position"]}
+                elif actions["can_bid"]:
+                    intent = "game.place_bid"
+                    auction = state.get("auction") or {}
+                    high = auction.get("highest_bid") or 0
+                    payload = {"amount": max(high + 10, 60)}
+                elif actions.get("can_pay_jail_fine"):
+                    intent = "game.pay_jail_fine"
+                    payload = None
                 elif actions["can_end_turn"]:
                     intent = "game.end_turn"
+                    payload = None
                 else:
                     raise AssertionError(f"no actionable move in {actions}")
 
-                await cur_ws.send(_envelope(intent))
+                await cur_ws.send(_envelope(intent, payload))
                 cur_frame = await _recv_state(cur_ws)
                 await _recv_state(other_ws)  # drain the broadcast on the other socket
                 state = cur_frame["payload"]
@@ -165,9 +177,8 @@ async def run_game_flow() -> None:
     print("\nGAME E2E PASSED ✅")
 
 
+@pytest.mark.e2e
 def test_game_realtime_e2e() -> None:
-    import pytest
-
     try:
         httpx.get(f"{BASE_URL}/health", timeout=2.0).raise_for_status()
     except Exception as exc:  # noqa: BLE001

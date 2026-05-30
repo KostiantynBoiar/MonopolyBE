@@ -4,7 +4,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from domain.game.enums import GameStatus, LogKind, TokenColor, TurnPhase
+from domain.game.enums import GameStatus, LogKind, TokenColor, TradeStatus, TurnPhase
+from domain.game.schemas.cards import ActiveCard
 
 
 class DiceRoll(BaseModel):
@@ -34,6 +35,7 @@ class ActionSet(BaseModel):
     can_pay_jail_fine: bool = False
     can_use_jail_card: bool = False
     can_bid: bool = False
+    can_declare_bankruptcy: bool = False
 
 
 class SpaceOwnership(BaseModel):
@@ -91,6 +93,52 @@ class LogEntry(BaseModel):
     sticker_url: str | None = None
 
 
+class AuctionBid(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    player_id: str
+    amount: int
+
+
+class AuctionState(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    property_position: int
+    bids: tuple[AuctionBid, ...] = ()
+    highest_bid: int = 0
+    highest_bidder_id: str | None = None
+    time_remaining_ms: int = 0
+    started_at_ms: int = 0
+
+
+class TradeOffer(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    money: int = 0
+    positions: tuple[int, ...] = ()
+    get_out_of_jail_cards: int = 0
+
+
+class TradeState(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    id: str
+    proposer_id: str
+    target_id: str
+    proposer_offer: TradeOffer
+    target_request: TradeOffer
+    status: TradeStatus
+    expires_at: datetime
+
+
+class BankruptcyState(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    debtor_id: str
+    creditor_id: str | None = None
+    amount_owed: int
+
+
 class GameState(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -104,7 +152,12 @@ class GameState(BaseModel):
     players: tuple[PlayerState, ...]
     turn: TurnState
     spaces: tuple[SpaceOwnership, ...]
-    auction: None = None
-    trade: None = None
-    active_card: None = None
+    auction: AuctionState | None = None
+    trade: TradeState | None = None
+    active_card: ActiveCard | None = None
+    bankruptcy: BankruptcyState | None = None
+    bank_houses: int = 32
+    bank_hotels: int = 12
+    chance_deck: tuple[str, ...] = ()
+    chest_deck: tuple[str, ...] = ()
     log: tuple[LogEntry, ...] = ()

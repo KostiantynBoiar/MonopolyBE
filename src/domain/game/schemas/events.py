@@ -94,6 +94,16 @@ class TurnEnded(BaseModel):
     next_player_name: str
 
 
+class CardDrawn(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    player_id: str
+    player_name: str
+    card_id: str
+    card_text: str
+    kind: str
+
+
 GameEvent = (
     PlayerMoved
     | PassedGo
@@ -104,6 +114,7 @@ GameEvent = (
     | SentToJail
     | TaxPaid
     | TurnEnded
+    | CardDrawn
 )
 
 
@@ -193,5 +204,14 @@ def event_to_log_entry(event: GameEvent, ts: datetime) -> LogEntry:
                 player_id=e.next_player_id,
                 player_name=e.next_player_name,
                 text=f"it is now {e.next_player_name}'s turn",
+                ts=ts,
+            )
+        case CardDrawn() as e:
+            return LogEntry(
+                id=entry_id,
+                kind=LogKind.EVENT,
+                player_id=e.player_id,
+                player_name=e.player_name,
+                text=f"drew card: {e.card_text}",
                 ts=ts,
             )

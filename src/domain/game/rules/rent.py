@@ -1,9 +1,6 @@
 from __future__ import annotations
 
 from domain.game.constants import (
-    BOARD_SIZE,
-    JAIL_POSITION,
-    JAIL_TURNS_INITIAL,
     MAX_RAILROADS_OWNED,
     MONOPOLY_RENT_MULTIPLIER,
     RAILROAD_RENTS,
@@ -17,7 +14,7 @@ from domain.game.rules.helpers import (
     count_owned_railroads,
     count_owned_utilities,
     get_player_by_id,
-    player_owns_full_color_group,
+    player_has_rent_monopoly,
 )
 
 
@@ -27,6 +24,7 @@ def calculate_rent(
     spaces: tuple[SpaceOwnership, ...],
     players: tuple[PlayerState, ...],
     dice_total: int,
+    rent_multiplier: int = 1,
 ) -> int:
     ownership = spaces[position]
     if ownership.owner_id is None or ownership.is_mortgaged:
@@ -37,7 +35,8 @@ def calculate_rent(
 
     if board_space.type == SpaceType.RAILROAD:
         count = count_owned_railroads(owner, spaces)
-        return RAILROAD_RENTS[min(count, MAX_RAILROADS_OWNED) - 1]
+        base = RAILROAD_RENTS[min(count, MAX_RAILROADS_OWNED) - 1]
+        return base * rent_multiplier
 
     if board_space.type == SpaceType.UTILITY:
         count = count_owned_utilities(owner, spaces)
@@ -54,13 +53,13 @@ def calculate_rent(
             ownership.houses == 0
             and not ownership.has_hotel
             and board_space.color_group is not None
-            and player_owns_full_color_group(
+            and player_has_rent_monopoly(
                 owner,
                 board_space.color_group.value,
                 spaces,
             )
         ):
             return amount * MONOPOLY_RENT_MULTIPLIER
-        return amount
+        return amount * rent_multiplier
 
     return 0
