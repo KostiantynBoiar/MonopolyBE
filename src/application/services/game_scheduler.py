@@ -7,10 +7,11 @@ from datetime import UTC, datetime
 import structlog
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
-from application.services.game_service import GameService
 from core.config import Settings, get_settings
 from domain.game.engine import apply
+from domain.game.enums import GameStatus
 from domain.game.rng import FixedClock
+from domain.game.rules.auction import is_auction_expired
 from domain.game.schemas.commands import AdvanceAuction, ExpireTrade
 from gateway.backplane import Backplane
 from infra.mongo.games.repository import GameRepository
@@ -64,41 +65,63 @@ class GameScheduler:
             projection={"_id": 1, "session_id": 1},
         )
         async for doc in cursor:
-            session_id = doc["session_id"]
-            stored = await self._games.find_by_session_id(session_id)
-            if stored is None:
-                continue
-            state = stored.state
-            if state.auction is None and state.trade is None:
-                continue
+            # One malformed/stale game must not abort processing of all the others.
+            try:
+                await self._tick_one(doc["session_id"])
+            except Exception:
+                logger.exception("game_scheduler_game_failed", session_id=doc.get("session_id"))
 
-            rng = GameRepository.restore_rng(stored.rng_state)
-            clock = FixedClock(datetime.now(UTC))
-            command = None
-            if state.auction is not None:
-                command = AdvanceAuction()
-            elif state.trade is not None and state.trade.expires_at <= clock.now():
-                command = ExpireTrade()
+    async def _tick_one(self, session_id: str) -> None:
+        stored = await self._games.find_by_session_id(session_id)
+        if stored is None:
+            return
+        state = stored.state
+        if state.auction is None and state.trade is None:
+            return
 
-            if command is None:
-                continue
+        now = datetime.now(UTC)
+        now_ms = int(now.timestamp() * 1000)
 
-            new_state, _ = apply(
-                state,
-                command,
-                rng=rng,
-                clock=clock,
-                go_salary=self._settings.go_salary,
-                jail_fine=self._settings.jail_fine,
+        # Only act when a timer is actually due — otherwise we'd bump the version
+        # and re-broadcast an unchanged state every tick.
+        command = None
+        if state.auction is not None and is_auction_expired(state, now_ms):
+            command = AdvanceAuction()
+        elif state.trade is not None and state.trade.expires_at <= now:
+            command = ExpireTrade()
+
+        if command is None:
+            return
+
+        rng = GameRepository.restore_rng(stored.rng_state)
+        clock = FixedClock(now)
+        new_state, _ = apply(
+            state,
+            command,
+            rng=rng,
+            clock=clock,
+            go_salary=self._settings.go_salary,
+            jail_fine=self._settings.jail_fine,
+        )
+        rng_state = GameRepository.serialize_rng(rng)
+        updated = await self._games.update_with_version(
+            stored.game_id,
+            new_state,
+            stored.version,
+            rng_state,
+        )
+        if updated is not None:
+            await self._backplane.publish_game_state(
+                session_id, updated.state.model_dump(mode="json")
             )
-            rng_state = GameRepository.serialize_rng(rng)
-            updated = await self._games.update_with_version(
-                stored.game_id,
-                new_state,
-                stored.version,
-                rng_state,
-            )
-            if updated is not None:
-                service = GameService(self._games, self._settings)
-                outbound = service.snapshot_message(updated.state)
-                await self._backplane.publish(session_id, outbound)
+            if updated.state.status == GameStatus.FINISHED:
+                await self._finish_session(session_id)
+
+    async def _finish_session(self, session_id: str) -> None:
+        from application.services.session_service import SessionService
+        from api.sessions.router import _broadcast_session_updated
+
+        session_service = SessionService.from_db(self._games._collection.database)
+        session = await session_service.mark_finished(session_id)
+        if session is not None:
+            await _broadcast_session_updated(self._backplane, session)

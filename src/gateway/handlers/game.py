@@ -5,7 +5,7 @@ from pydantic import TypeAdapter
 from application.services.game_service import GameService
 from core.exceptions import GameNotFoundError, GameVersionConflictError
 from domain.game.exceptions import IllegalMove
-from domain.game.enums import TradeResponse
+from domain.game.enums import GameStatus, TradeResponse
 from domain.game.schemas.commands import (
     BuildHouse,
     BuyProperty,
@@ -94,8 +94,22 @@ async def _apply_and_publish(
         await conn.send_error("illegal_action", "state conflict; resync from latest snapshot")
         return
 
-    outbound = service.snapshot_message(state, viewer_user_id=conn.user_id)
-    await backplane.publish(conn.session_id, outbound)
+    # Per-viewer broadcast: each member receives a snapshot scoped to themselves.
+    await backplane.publish_game_state(conn.session_id, state.model_dump(mode="json"))
+
+    if state.status == GameStatus.FINISHED:
+        await _finish_session(conn, backplane)
+
+
+async def _finish_session(conn: Connection, backplane: Backplane) -> None:
+    """Flip the session to finished and broadcast session.updated so the lobby reflects it."""
+    from application.services.session_service import SessionService
+    from api.sessions.router import _broadcast_session_updated  # local import avoids cycle
+
+    session_service = SessionService.from_db(conn.websocket.app.state.mongo.db)
+    session = await session_service.mark_finished(conn.session_id)
+    if session is not None:
+        await _broadcast_session_updated(backplane, session)
 
 
 async def handle_game_roll_dice(

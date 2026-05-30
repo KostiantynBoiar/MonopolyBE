@@ -41,11 +41,35 @@ from protocol.ws.envelope import make_outbound
 
 _session_locks: dict[str, asyncio.Lock] = {}
 
+# Fields that exist in the persisted GameState but must never reach clients
+# (the deck order would reveal upcoming cards).
+_SERVER_ONLY_FIELDS = ("chance_deck", "chest_deck")
+
 
 def _lock_for(session_id: str) -> asyncio.Lock:
     if session_id not in _session_locks:
         _session_locks[session_id] = asyncio.Lock()
     return _session_locks[session_id]
+
+
+def build_game_state_message(state: GameState, viewer_user_id: str | None = None) -> dict:
+    """Build a per-viewer `game.state` outbound frame: actions + viewer_id scoped to
+    the given user, with server-only fields stripped. Pure (no IO) so it can also be
+    used as the backplane's per-viewer renderer. The returned frame has no `seq` —
+    the broadcaster stamps it."""
+    player_id = None
+    if viewer_user_id is not None:
+        for player in state.players:
+            if player.user_id == viewer_user_id:
+                player_id = player.id
+                break
+    snapshot = with_actions(state, player_id)
+    payload = snapshot.model_dump(mode="json")
+    for field in _SERVER_ONLY_FIELDS:
+        payload.pop(field, None)
+    if player_id is not None:
+        payload["viewer_id"] = player_id
+    return make_outbound("game.state", payload)
 
 
 class GameService:
@@ -147,17 +171,7 @@ class GameService:
             return updated.state
 
     def snapshot_message(self, state: GameState, viewer_user_id: str | None = None) -> dict:
-        player_id = None
-        if viewer_user_id is not None:
-            for player in state.players:
-                if player.user_id == viewer_user_id:
-                    player_id = player.id
-                    break
-        snapshot = with_actions(state, player_id)
-        payload = snapshot.model_dump(mode="json")
-        if player_id is not None:
-            payload["viewer_id"] = player_id
-        return make_outbound("game.state", payload)
+        return build_game_state_message(state, viewer_user_id)
 
     @staticmethod
     def _resolve_player_id(state: GameState, user_id: str) -> str:

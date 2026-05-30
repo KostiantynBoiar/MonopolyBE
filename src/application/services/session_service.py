@@ -190,6 +190,15 @@ class SessionService:
             raise SessionNotJoinableError(session_id, session.status.value)
         return updated
 
+    async def mark_finished(self, session_id: str) -> Session | None:
+        """Flip an in-progress session to finished. Returns the updated session, or
+        None if it wasn't in_progress (already finished / idempotent no-op)."""
+        return await self._sessions.set_status(
+            session_id,
+            SessionStatus.FINISHED,
+            expected_status=SessionStatus.IN_PROGRESS,
+        )
+
     async def assert_member(self, session_id: str, user_id: str) -> Session:
         session = await self._sessions.find_by_id(session_id)
         if session is None or not session.has_member(user_id):

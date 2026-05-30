@@ -99,6 +99,18 @@ def test_advance_auction_when_expired(two_player_game: GameState) -> None:
     assert new_state.spaces[1].owner_id == state.players[0].id
 
 
+def test_advance_auction_noop_when_not_expired(
+    two_player_game: GameState, clock: FixedClock
+) -> None:
+    # Auction started "now" → not expired; AdvanceAuction must be a no-op (the
+    # scheduler relies on this to avoid spurious per-second broadcasts).
+    state = _auction_state(two_player_game, clock)
+    new_state, events = apply_cmd(state, AdvanceAuction(), clock)
+    assert new_state.auction is not None
+    assert new_state.spaces[1].owner_id is None
+    assert events == []
+
+
 def test_place_bid_via_engine(two_player_game: GameState, clock: FixedClock) -> None:
     state = _auction_state(two_player_game, clock)
     p2 = state.players[1]

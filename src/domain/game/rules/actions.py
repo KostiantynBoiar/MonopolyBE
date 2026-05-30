@@ -18,6 +18,22 @@ def compute_actions(state: GameState, player_id: str | None = None) -> ActionSet
     pid = player_id or state.turn.current_player_id
     phase = state.turn.phase
     player = get_player_by_id_from_state(state, pid)
+    is_current = pid == state.turn.current_player_id
+
+    if phase == TurnPhase.AUCTION:
+        can_bid = (
+            not player.is_bankrupt
+            and state.auction is not None
+            and state.auction.highest_bidder_id != pid
+            and player.balance > state.auction.highest_bid
+        )
+        return ActionSet(can_bid=can_bid)
+
+    if phase == TurnPhase.TRADE_NEGOTIATION:
+        return ActionSet()
+
+    if not is_current:
+        return ActionSet()
 
     if phase == TurnPhase.JAIL_DECISION:
         return ActionSet(
@@ -50,12 +66,6 @@ def compute_actions(state: GameState, player_id: str | None = None) -> ActionSet
 
     if phase == TurnPhase.MUST_PAY_RENT:
         return ActionSet(can_end_turn=True)
-
-    if phase == TurnPhase.AUCTION:
-        return ActionSet(can_bid=True)
-
-    if phase == TurnPhase.TRADE_NEGOTIATION:
-        return ActionSet(can_trade=True)
 
     if phase == TurnPhase.BANKRUPT_RESOLUTION:
         return ActionSet(

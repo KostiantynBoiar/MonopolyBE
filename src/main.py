@@ -12,6 +12,8 @@ from core.config import get_settings
 from core.exceptions import AppError
 from core.logging import setup_logging
 from application.services.game_scheduler import GameScheduler
+from application.services.game_service import build_game_state_message
+from domain.game.schemas.state import GameState
 from gateway.backplane import Backplane
 from gateway.manager import ConnectionManager
 from gateway.router import ws_router
@@ -36,6 +38,13 @@ async def lifespan(app: FastAPI):
 
     manager = ConnectionManager()
     backplane = Backplane(redis_url=settings.redis_url, manager=manager)
+
+    def _render_game_state(state_dict: dict, user_id: str) -> dict:
+        return build_game_state_message(
+            GameState.model_validate(state_dict), viewer_user_id=user_id
+        )
+
+    backplane.set_game_state_renderer(_render_game_state)
     await backplane.start()
 
     scheduler = GameScheduler(mongo.db, backplane, settings)

@@ -95,8 +95,12 @@ def test_game_state_includes_extended_fields(client: TestClient) -> None:
         ws.receive_json()
         msg = recv_game_state(ws)
         payload = msg["payload"]
-        assert "chance_deck" in payload
+        # Deck order is server-only and must never reach clients.
+        assert "chance_deck" not in payload
+        assert "chest_deck" not in payload
+        # Public game info is present.
         assert "bank_houses" in payload
+        assert "bank_hotels" in payload
         assert payload.get("active_card") is None
         assert payload.get("auction") is None
         assert payload.get("trade") is None

@@ -13,6 +13,7 @@ from tests.gateway.game_helpers import (
     other_token_for_current,
     recv_error,
     recv_game_state,
+    seed_post_roll_buyable,
     setup_two_player_game,
     start_session,
     ws_headers,
@@ -37,19 +38,6 @@ def _started_game(client: TestClient) -> tuple[GameSetup, str]:
     return setup, token
 
 
-def _roll_until_can_buy(ws, max_rolls: int = 25) -> dict:
-    for _ in range(max_rolls):
-        ws.send_text(envelope("game.roll_dice"))
-        msg = recv_game_state(ws)
-        turn = msg["payload"]["turn"]
-        if turn["actions_available"]["can_buy"]:
-            return msg
-        if turn["actions_available"]["can_end_turn"]:
-            ws.send_text(envelope("game.end_turn"))
-            recv_game_state(ws)
-    raise AssertionError("never reached a purchasable property")
-
-
 def test_roll_dice_intent(client: TestClient) -> None:
     setup, token = _started_game(client)
     with client.websocket_connect(
@@ -65,13 +53,15 @@ def test_roll_dice_intent(client: TestClient) -> None:
 
 def test_buy_property_intent(client: TestClient) -> None:
     setup, token = _started_game(client)
+    seed_post_roll_buyable(client, setup.session_id, position=1)
     with client.websocket_connect(
         f"/ws/sessions/{setup.session_id}",
         headers=ws_headers(token),
     ) as ws:
         ws.receive_json()
-        roll_msg = _roll_until_can_buy(ws)
-        position = roll_msg["payload"]["turn"]["pending_buy_position"]
+        snap = recv_game_state(ws)
+        position = snap["payload"]["turn"]["pending_buy_position"]
+        assert position == 1
         ws.send_text(envelope("game.buy_property", {"position": position}))
         buy_msg = recv_game_state(ws)
         assert buy_msg["payload"]["spaces"][position]["owner_id"] is not None
@@ -79,24 +69,29 @@ def test_buy_property_intent(client: TestClient) -> None:
 
 def test_buy_property_wrong_position(client: TestClient) -> None:
     setup, token = _started_game(client)
+    seed_post_roll_buyable(client, setup.session_id, position=1)
     with client.websocket_connect(
         f"/ws/sessions/{setup.session_id}",
         headers=ws_headers(token),
     ) as ws:
         ws.receive_json()
-        _roll_until_can_buy(ws)
-        ws.send_text(envelope("game.buy_property", {"position": 99}))
+        recv_game_state(ws)
+        # Valid board position (so it passes payload validation) but not the pending
+        # buy → the engine rejects it as illegal_action.
+        ws.send_text(envelope("game.buy_property", {"position": 5}))
         err = recv_error(ws)
+        assert err["payload"]["code"] == "illegal_action"
 
 
 def test_pass_buy_starts_auction(client: TestClient) -> None:
     setup, token = _started_game(client)
+    seed_post_roll_buyable(client, setup.session_id, position=1)
     with client.websocket_connect(
         f"/ws/sessions/{setup.session_id}",
         headers=ws_headers(token),
     ) as ws:
         ws.receive_json()
-        _roll_until_can_buy(ws)
+        recv_game_state(ws)
         ws.send_text(envelope("game.pass_buy"))
         msg = recv_game_state(ws)
         assert msg["payload"]["auction"] is not None
@@ -249,7 +244,8 @@ def test_build_house_even_build_violation(client: TestClient) -> None:
     ) as ws:
         ws.receive_json()
         recv_game_state(ws)
-        ws.send_text(envelope("game.build_house", {"position": 3}))
+        # pos 1 already has 1 house; pos 3 has 0. Building on pos 1 again (→ 2,0) violates even-build.
+        ws.send_text(envelope("game.build_house", {"position": 1}))
         err = recv_error(ws)
         assert err["payload"]["code"] == "illegal_action"
 
@@ -359,12 +355,13 @@ def test_propose_and_respond_trade_intents(client: TestClient) -> None:
 
 def test_place_bid_intent(client: TestClient) -> None:
     setup, token = _started_game(client)
+    seed_post_roll_buyable(client, setup.session_id, position=1)
     with client.websocket_connect(
         f"/ws/sessions/{setup.session_id}",
         headers=ws_headers(token),
     ) as ws:
         ws.receive_json()
-        _roll_until_can_buy(ws)
+        recv_game_state(ws)
         ws.send_text(envelope("game.pass_buy"))
         auction_msg = recv_game_state(ws)
         assert auction_msg["payload"]["auction"] is not None
@@ -376,12 +373,13 @@ def test_place_bid_intent(client: TestClient) -> None:
 
 def test_place_bid_too_low_rejected(client: TestClient) -> None:
     setup, token = _started_game(client)
+    seed_post_roll_buyable(client, setup.session_id, position=1)
     with client.websocket_connect(
         f"/ws/sessions/{setup.session_id}",
         headers=ws_headers(token),
     ) as ws:
         ws.receive_json()
-        _roll_until_can_buy(ws)
+        recv_game_state(ws)
         ws.send_text(envelope("game.pass_buy"))
         recv_game_state(ws)
         ws.send_text(envelope("game.place_bid", {"amount": 60}))
