@@ -12,7 +12,6 @@ from application.services.session_service import SessionService
 from core.config import get_settings
 from core.security import hash_password
 from domain.game.constants import AUCTION_DURATION_MS
-from domain.game.enums import TurnPhase
 from domain.game.rules.auction import start_auction
 from domain.session.schemas import SessionVisibility
 from infra.mongo.games.repository import GameRepository
@@ -93,9 +92,9 @@ async def test_scheduler_resolves_expired_auction(db) -> None:
     scheduler = GameScheduler(db, fake, get_settings())  # type: ignore[arg-type]
     await scheduler._tick()
 
-    # Expired → resolved (no bids → unowned) + a broadcast for this game.
+    # Expired → resolved (no bids → property stays unowned) + a broadcast for this game.
     assert session.id in fake.game_state_calls
     stored = await GameRepository(db).find_by_session_id(session.id)
     assert stored is not None
     assert stored.state.auction is None
-    assert stored.state.turn.phase == TurnPhase.POST_ROLL
+    assert stored.state.spaces[1].owner_id is None
