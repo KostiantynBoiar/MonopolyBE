@@ -129,12 +129,6 @@ async def ws_endpoint(websocket: WebSocket, session_id: str) -> None:
     member = session.get_member(user_id)
     display_name = member.display_name if member else user_id
 
-    # Echo the "bearer" subprotocol the client offered (Sec-WebSocket-Protocol:
-    # bearer,<token>). Strict clients (Safari/Firefox) FAIL the connection if the server
-    # accepts without selecting one of the offered subprotocols, which manifests as an
-    # instant client-side handshake failure → reconnect storm. We only reach here when the
-    # client offered "bearer,<token>" (we return 4401 above otherwise), so this is always
-    # the correct selection.
     await websocket.accept(subprotocol="bearer")
 
     manager: ConnectionManager = websocket.app.state.manager
