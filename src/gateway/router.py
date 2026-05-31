@@ -79,7 +79,7 @@ async def ws_endpoint(websocket: WebSocket, session_id: str) -> None:
     member = session.get_member(user_id)
     display_name = member.display_name if member else user_id
 
-    await websocket.accept()
+    await websocket.accept(subprotocol="bearer")
 
     manager: ConnectionManager = websocket.app.state.manager
     backplane: Backplane = websocket.app.state.backplane
