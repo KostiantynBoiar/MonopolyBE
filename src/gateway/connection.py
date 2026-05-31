@@ -101,10 +101,10 @@ class Connection:
             try:
                 await self.websocket.send_text(json.dumps(msg))
             except WebSocketDisconnect:
-                break
+                raise
             except Exception:
                 log.exception("send_loop_error")
-                break
+                raise WebSocketDisconnect(code=1011)
 
     async def _recv_loop(self, backplane: Backplane, log: Any) -> None:
         try:
