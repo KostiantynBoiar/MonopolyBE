@@ -91,7 +91,8 @@ class Connection:
         except* (WebSocketDisconnect, asyncio.CancelledError):
             pass
         except* Exception as eg:
-            log.error("connection_task_error", errors=str(eg))
+            for exc in eg.exceptions:
+                log.exception("connection_task_error", exc_info=exc)
         finally:
             self._closed = True
             self._stop.set()
@@ -117,6 +118,11 @@ class Connection:
                 await dispatch(self, text, backplane)
         except WebSocketDisconnect:
             log.info("connection_closed_by_client")
+        except RuntimeError:
+            # Starlette raises RuntimeError ("WebSocket is not connected…") when the
+            # client drops during/just after the handshake (e.g. React StrictMode's
+            # connect→immediate-close). Treat it as a normal disconnect, not an error.
+            log.info("connection_closed_during_handshake")
         finally:
             # Signal the send/heartbeat loops to wind down so run() returns promptly and
             # disconnect cleanup fires immediately (not after the next ~20s heartbeat).

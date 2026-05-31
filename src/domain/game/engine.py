@@ -75,8 +75,11 @@ def apply(
 
     if isinstance(command, (AdvanceAuction, ExpireTrade)):
         new_state, events = _handle_system(state, command, now_ms=now_ms, now=now)
-    elif isinstance(command, RespondTrade):
-        # Trade responses come from the trade target, not the current turn player.
+    elif isinstance(command, (RespondTrade, PlaceBid)):
+        # These come from a player who is NOT the current turn player: trade responses
+        # from the trade target, and auction bids from any solvent player (an auction is
+        # open to everyone, not just whoever's turn it is). Eligibility is validated
+        # inside the respective rule (respond_trade / place_bid).
         new_state, events = _dispatch_player_command(
             state, command, rng, go_salary, jail_fine, now_ms=now_ms, now=now
         )

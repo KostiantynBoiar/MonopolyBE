@@ -10,6 +10,8 @@ WS_SEND_QUEUE_MAX_SIZE = 256
 WS_HEARTBEAT_INTERVAL_S = 20
 WS_HEARTBEAT_TIMEOUT_S = 25
 WS_PROTOCOL_VERSION = 1
+# Grace before a disconnected member is removed from a waiting room (transient-drop tolerant).
+WS_DISCONNECT_GRACE_S = 15
 
 # Stickers are served from the FE under /stickers/<pack>/<file>.
 STICKER_URL_PATTERN = r"^/stickers/[\w-]+/[\w.-]+$"
