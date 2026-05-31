@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from __future__ import annotations
-
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from pydantic import TypeAdapter
@@ -14,6 +13,10 @@ from protocol.ws.schemas import (
     StickerMessagePayload,
     StickerSendPayload,
 )
+
+if TYPE_CHECKING:
+    from gateway.backplane import Backplane
+    from gateway.connection import Connection
 
 _chat_send_adapter: TypeAdapter[ChatSendPayload] = TypeAdapter(ChatSendPayload)
 _sticker_send_adapter: TypeAdapter[StickerSendPayload] = TypeAdapter(StickerSendPayload)

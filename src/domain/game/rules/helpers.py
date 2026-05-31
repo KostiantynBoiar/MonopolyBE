@@ -51,6 +51,7 @@ def player_owns_full_color_group(
     color_group: str,
     spaces: tuple[SpaceOwnership, ...],
 ) -> bool:
+    """True if player owns all properties in a color group with no buildings."""
     group_positions = positions_in_color_group(color_group)
     if not group_positions:
         return False
@@ -59,6 +60,22 @@ def player_owns_full_color_group(
         if ownership.owner_id != player.id:
             return False
         if ownership.houses > 0 or ownership.has_hotel:
+            return False
+    return True
+
+
+def player_has_rent_monopoly(
+    player: PlayerState,
+    color_group: str,
+    spaces: tuple[SpaceOwnership, ...],
+) -> bool:
+    """True if player owns all unmortgaged properties in a color group."""
+    group_positions = positions_in_color_group(color_group)
+    if not group_positions:
+        return False
+    for pos in group_positions:
+        ownership = spaces[pos]
+        if ownership.owner_id != player.id or ownership.is_mortgaged:
             return False
     return True
 

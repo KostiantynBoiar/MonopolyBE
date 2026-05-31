@@ -5,19 +5,58 @@ from pydantic import TypeAdapter
 from application.services.game_service import GameService
 from core.exceptions import GameNotFoundError, GameVersionConflictError
 from domain.game.exceptions import IllegalMove
-from domain.game.schemas.commands import BuyProperty, EndTurn, PassBuy, RollDice
+from domain.game.enums import GameStatus, TradeResponse
+from domain.game.schemas.commands import (
+    BuildHouse,
+    BuyProperty,
+    DeclareBankruptcy,
+    EndTurn,
+    Mortgage,
+    PassBuy,
+    PayJailFine,
+    PlaceBid,
+    ProposeTrade,
+    RespondTrade,
+    RollDice,
+    SellHouse,
+    Unmortgage,
+    UseJailCard,
+)
+from domain.game.schemas.state import TradeOffer
 from protocol.ws.envelope import RawEnvelope
 from protocol.ws.schemas import (
+    BuildHousePayload,
     BuyPropertyPayload,
+    DeclareBankruptcyPayload,
     EndTurnPayload,
+    MortgagePayload,
     PassBuyPayload,
+    PayJailFinePayload,
+    PlaceBidPayload,
+    ProposeTradePayload,
+    RespondTradePayload,
     RollDicePayload,
+    SellHousePayload,
+    UnmortgagePayload,
+    UseJailCardPayload,
 )
 
 _roll_adapter: TypeAdapter[RollDicePayload] = TypeAdapter(RollDicePayload)
 _buy_adapter: TypeAdapter[BuyPropertyPayload] = TypeAdapter(BuyPropertyPayload)
 _pass_buy_adapter: TypeAdapter[PassBuyPayload] = TypeAdapter(PassBuyPayload)
 _end_turn_adapter: TypeAdapter[EndTurnPayload] = TypeAdapter(EndTurnPayload)
+_pay_jail_adapter: TypeAdapter[PayJailFinePayload] = TypeAdapter(PayJailFinePayload)
+_use_jail_adapter: TypeAdapter[UseJailCardPayload] = TypeAdapter(UseJailCardPayload)
+_build_adapter: TypeAdapter[BuildHousePayload] = TypeAdapter(BuildHousePayload)
+_sell_adapter: TypeAdapter[SellHousePayload] = TypeAdapter(SellHousePayload)
+_mortgage_adapter: TypeAdapter[MortgagePayload] = TypeAdapter(MortgagePayload)
+_unmortgage_adapter: TypeAdapter[UnmortgagePayload] = TypeAdapter(UnmortgagePayload)
+_propose_trade_adapter: TypeAdapter[ProposeTradePayload] = TypeAdapter(ProposeTradePayload)
+_respond_trade_adapter: TypeAdapter[RespondTradePayload] = TypeAdapter(RespondTradePayload)
+_place_bid_adapter: TypeAdapter[PlaceBidPayload] = TypeAdapter(PlaceBidPayload)
+_declare_bankruptcy_adapter: TypeAdapter[DeclareBankruptcyPayload] = TypeAdapter(
+    DeclareBankruptcyPayload
+)
 
 
 def _game_service(conn: Connection) -> GameService:
@@ -27,7 +66,20 @@ def _game_service(conn: Connection) -> GameService:
 async def _apply_and_publish(
     conn: Connection,
     backplane: Backplane,
-    command: RollDice | BuyProperty | PassBuy | EndTurn,
+    command: RollDice
+    | BuyProperty
+    | PassBuy
+    | EndTurn
+    | PayJailFine
+    | UseJailCard
+    | BuildHouse
+    | SellHouse
+    | Mortgage
+    | Unmortgage
+    | ProposeTrade
+    | RespondTrade
+    | PlaceBid
+    | DeclareBankruptcy,
 ) -> None:
     service = _game_service(conn)
     try:
@@ -42,8 +94,22 @@ async def _apply_and_publish(
         await conn.send_error("illegal_action", "state conflict; resync from latest snapshot")
         return
 
-    outbound = service.snapshot_message(state)
-    await backplane.publish(conn.session_id, outbound)
+    # Per-viewer broadcast: each member receives a snapshot scoped to themselves.
+    await backplane.publish_game_state(conn.session_id, state.model_dump(mode="json"))
+
+    if state.status == GameStatus.FINISHED:
+        await _finish_session(conn, backplane)
+
+
+async def _finish_session(conn: Connection, backplane: Backplane) -> None:
+    """Flip the session to finished and broadcast session.updated so the lobby reflects it."""
+    from application.services.session_service import SessionService
+    from api.sessions.router import _broadcast_session_updated  # local import avoids cycle
+
+    session_service = SessionService.from_db(conn.websocket.app.state.mongo.db)
+    session = await session_service.mark_finished(conn.session_id)
+    if session is not None:
+        await _broadcast_session_updated(backplane, session)
 
 
 async def handle_game_roll_dice(
@@ -84,3 +150,136 @@ async def handle_game_end_turn(
 ) -> None:
     _end_turn_adapter.validate_python(envelope.payload)
     await _apply_and_publish(conn, backplane, EndTurn(player_id=""))
+
+
+async def handle_game_pay_jail_fine(
+    conn: Connection,
+    envelope: RawEnvelope,
+    backplane: Backplane,
+) -> None:
+    _pay_jail_adapter.validate_python(envelope.payload)
+    await _apply_and_publish(conn, backplane, PayJailFine(player_id=""))
+
+
+async def handle_game_use_jail_card(
+    conn: Connection,
+    envelope: RawEnvelope,
+    backplane: Backplane,
+) -> None:
+    _use_jail_adapter.validate_python(envelope.payload)
+    await _apply_and_publish(conn, backplane, UseJailCard(player_id=""))
+
+
+async def handle_game_build_house(
+    conn: Connection,
+    envelope: RawEnvelope,
+    backplane: Backplane,
+) -> None:
+    payload = _build_adapter.validate_python(envelope.payload)
+    await _apply_and_publish(
+        conn, backplane, BuildHouse(player_id="", position=payload.position)
+    )
+
+
+async def handle_game_sell_house(
+    conn: Connection,
+    envelope: RawEnvelope,
+    backplane: Backplane,
+) -> None:
+    payload = _sell_adapter.validate_python(envelope.payload)
+    await _apply_and_publish(
+        conn, backplane, SellHouse(player_id="", position=payload.position)
+    )
+
+
+async def handle_game_mortgage(
+    conn: Connection,
+    envelope: RawEnvelope,
+    backplane: Backplane,
+) -> None:
+    payload = _mortgage_adapter.validate_python(envelope.payload)
+    await _apply_and_publish(
+        conn, backplane, Mortgage(player_id="", position=payload.position)
+    )
+
+
+async def handle_game_unmortgage(
+    conn: Connection,
+    envelope: RawEnvelope,
+    backplane: Backplane,
+) -> None:
+    payload = _unmortgage_adapter.validate_python(envelope.payload)
+    await _apply_and_publish(
+        conn, backplane, Unmortgage(player_id="", position=payload.position)
+    )
+
+
+async def handle_game_propose_trade(
+    conn: Connection,
+    envelope: RawEnvelope,
+    backplane: Backplane,
+) -> None:
+    payload = _propose_trade_adapter.validate_python(envelope.payload)
+
+    def _to_offer(offer) -> TradeOffer:
+        return TradeOffer(
+            money=offer.money,
+            positions=tuple(offer.positions),
+            get_out_of_jail_cards=offer.get_out_of_jail_cards,
+        )
+
+    await _apply_and_publish(
+        conn,
+        backplane,
+        ProposeTrade(
+            player_id="",
+            target_id=payload.target_id,
+            proposer_offer=_to_offer(payload.proposer_offer),
+            target_request=_to_offer(payload.target_request),
+        ),
+    )
+
+
+async def handle_game_respond_trade(
+    conn: Connection,
+    envelope: RawEnvelope,
+    backplane: Backplane,
+) -> None:
+    payload = _respond_trade_adapter.validate_python(envelope.payload)
+    counter = None
+    if payload.counter_offer is not None:
+        counter = TradeOffer(
+            money=payload.counter_offer.money,
+            positions=tuple(payload.counter_offer.positions),
+            get_out_of_jail_cards=payload.counter_offer.get_out_of_jail_cards,
+        )
+    await _apply_and_publish(
+        conn,
+        backplane,
+        RespondTrade(
+            player_id="",
+            trade_id=payload.trade_id,
+            response=TradeResponse(payload.response),
+            counter_offer=counter,
+        ),
+    )
+
+
+async def handle_game_place_bid(
+    conn: Connection,
+    envelope: RawEnvelope,
+    backplane: Backplane,
+) -> None:
+    payload = _place_bid_adapter.validate_python(envelope.payload)
+    await _apply_and_publish(
+        conn, backplane, PlaceBid(player_id="", amount=payload.amount)
+    )
+
+
+async def handle_game_declare_bankruptcy(
+    conn: Connection,
+    envelope: RawEnvelope,
+    backplane: Backplane,
+) -> None:
+    _declare_bankruptcy_adapter.validate_python(envelope.payload)
+    await _apply_and_publish(conn, backplane, DeclareBankruptcy(player_id=""))

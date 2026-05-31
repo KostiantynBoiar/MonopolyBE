@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import Any
+from typing import Any, Callable
 
 import structlog
 from redis.asyncio import Redis
@@ -12,6 +12,14 @@ from redis.asyncio.client import PubSub
 from gateway.manager import ConnectionManager
 
 logger = structlog.get_logger(__name__)
+
+# Internal envelope type carried over Redis for per-viewer game.state broadcasts.
+# The full game state (incl. server-only deck order) travels server-to-server only;
+# each node renders a client-safe, viewer-scoped frame for its local connections.
+_GAME_STATE_BROADCAST = "__game_state_broadcast__"
+
+# (state_dict, user_id) -> client game.state frame (without seq).
+GameStateRenderer = Callable[[dict[str, Any], str], dict[str, Any]]
 
 
 class Backplane:
@@ -25,6 +33,12 @@ class Backplane:
         self._subscriptions: dict[str, int] = {}
         self._reader_task: asyncio.Task[None] | None = None
         self._shutdown = False
+        self._game_renderer: GameStateRenderer | None = None
+
+    def set_game_state_renderer(self, renderer: GameStateRenderer) -> None:
+        """Install the per-viewer renderer used to turn a broadcast game state into a
+        client-safe, viewer-scoped game.state frame on the receiving node."""
+        self._game_renderer = renderer
 
     async def start(self) -> None:
         # health_check_interval keeps the long-lived pub/sub connection alive and
@@ -71,6 +85,17 @@ class Backplane:
         seq = await self._cmd.incr(f"seq:{session_id}")
         msg["seq"] = seq
         await self._cmd.publish(f"session:{session_id}", json.dumps(msg))
+
+    async def publish_game_state(self, session_id: str, state_dict: dict[str, Any]) -> None:
+        """Broadcast a game state to all members, rendered per-viewer on receipt.
+        The full state (with server-only fields) is carried over Redis; each node
+        renders a client-safe, viewer-scoped game.state for its local connections,
+        all sharing the single seq stamped here."""
+        if self._cmd is None:
+            return
+        seq = await self._cmd.incr(f"seq:{session_id}")
+        envelope = {"type": _GAME_STATE_BROADCAST, "seq": seq, "state": state_dict}
+        await self._cmd.publish(f"session:{session_id}", json.dumps(envelope))
 
     async def current_seq(self, session_id: str) -> int:
         if self._cmd is None:
@@ -132,13 +157,36 @@ class Backplane:
         except json.JSONDecodeError:
             logger.warning("backplane_invalid_json", session_id=session_id)
             return
+
+        if msg.get("type") == _GAME_STATE_BROADCAST:
+            await self._dispatch_game_state(session_id, msg)
+            return
+
         for conn in self._manager.local_connections(session_id):
-            ok = conn.enqueue(msg)
-            if not ok:
-                logger.warning(
-                    "backplane_queue_full",
-                    session_id=session_id,
-                    user_id=conn.user_id,
-                    connection_id=conn.connection_id,
-                )
-                await conn.close(1011)
+            self._enqueue_or_close(session_id, conn, msg)
+
+    async def _dispatch_game_state(self, session_id: str, msg: dict[str, Any]) -> None:
+        renderer = self._game_renderer
+        if renderer is None:
+            return
+        state_dict = msg["state"]
+        seq = msg.get("seq")
+        for conn in self._manager.local_connections(session_id):
+            try:
+                frame = renderer(state_dict, conn.user_id)
+            except Exception:
+                logger.exception("game_state_render_failed", session_id=session_id)
+                continue
+            frame["seq"] = seq
+            self._enqueue_or_close(session_id, conn, frame)
+
+    def _enqueue_or_close(self, session_id: str, conn: Any, frame: dict[str, Any]) -> None:
+        ok = conn.enqueue(frame)
+        if not ok:
+            logger.warning(
+                "backplane_queue_full",
+                session_id=session_id,
+                user_id=conn.user_id,
+                connection_id=conn.connection_id,
+            )
+            asyncio.create_task(conn.close(1011))

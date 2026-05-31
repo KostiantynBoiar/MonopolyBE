@@ -64,3 +64,22 @@ class LogKind(StrEnum):
     EVENT = "event"
     CHAT = "chat"
     STICKER = "sticker"
+
+
+class CardKind(StrEnum):
+    CHANCE = "chance"
+    COMMUNITY_CHEST = "community_chest"
+
+
+class TradeStatus(StrEnum):
+    PENDING = "pending"
+    COUNTERED = "countered"
+    ACCEPTED = "accepted"
+    REJECTED = "rejected"
+    CANCELLED = "cancelled"
+
+
+class TradeResponse(StrEnum):
+    ACCEPT = "accept"
+    REJECT = "reject"
+    COUNTER = "counter"

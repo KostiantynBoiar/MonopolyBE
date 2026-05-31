@@ -14,11 +14,24 @@ from domain.game.exceptions import IllegalMove
 from domain.game.rng import FixedClock
 from domain.game.rules.actions import with_actions
 from domain.game.schemas.commands import (
+    AdvanceAuction,
+    BuildHouse,
     BuyProperty,
+    DeclareBankruptcy,
     EndTurn,
+    ExpireTrade,
     GameCommand,
+    Mortgage,
     PassBuy,
+    PayJailFine,
+    PlaceBid,
+    ProposeTrade,
+    RespondTrade,
     RollDice,
+    SellHouse,
+    SystemCommand,
+    Unmortgage,
+    UseJailCard,
 )
 from domain.game.schemas.state import GameState
 from domain.game.setup import GameMember, new_game
@@ -28,11 +41,35 @@ from protocol.ws.envelope import make_outbound
 
 _session_locks: dict[str, asyncio.Lock] = {}
 
+# Fields that exist in the persisted GameState but must never reach clients
+# (the deck order would reveal upcoming cards).
+_SERVER_ONLY_FIELDS = ("chance_deck", "chest_deck")
+
 
 def _lock_for(session_id: str) -> asyncio.Lock:
     if session_id not in _session_locks:
         _session_locks[session_id] = asyncio.Lock()
     return _session_locks[session_id]
+
+
+def build_game_state_message(state: GameState, viewer_user_id: str | None = None) -> dict:
+    """Build a per-viewer `game.state` outbound frame: actions + viewer_id scoped to
+    the given user, with server-only fields stripped. Pure (no IO) so it can also be
+    used as the backplane's per-viewer renderer. The returned frame has no `seq` —
+    the broadcaster stamps it."""
+    player_id = None
+    if viewer_user_id is not None:
+        for player in state.players:
+            if player.user_id == viewer_user_id:
+                player_id = player.id
+                break
+    snapshot = with_actions(state, player_id)
+    payload = snapshot.model_dump(mode="json")
+    for field in _SERVER_ONLY_FIELDS:
+        payload.pop(field, None)
+    if player_id is not None:
+        payload["viewer_id"] = player_id
+    return make_outbound("game.state", payload)
 
 
 class GameService:
@@ -101,8 +138,11 @@ class GameService:
             if stored is None:
                 raise GameNotFoundError(session_id)
 
-            player_id = self._resolve_player_id(stored.state, user_id)
-            command = _with_player_id(command, player_id)
+            if isinstance(command, SystemCommand):
+                resolved = command
+            else:
+                player_id = self._resolve_player_id(stored.state, user_id)
+                resolved = _with_player_id(command, player_id)
 
             rng = GameRepository.restore_rng(stored.rng_state)
             clock = FixedClock(datetime.now(UTC))
@@ -110,10 +150,11 @@ class GameService:
             try:
                 new_state, _ = engine.apply(
                     stored.state,
-                    command,
+                    resolved,
                     rng=rng,
                     clock=clock,
                     go_salary=self._settings.go_salary,
+                    jail_fine=self._settings.jail_fine,
                 )
             except IllegalMove:
                 raise
@@ -129,9 +170,8 @@ class GameService:
                 raise GameVersionConflictError(session_id)
             return updated.state
 
-    def snapshot_message(self, state: GameState) -> dict:
-        snapshot = with_actions(state)
-        return make_outbound("game.state", snapshot)
+    def snapshot_message(self, state: GameState, viewer_user_id: str | None = None) -> dict:
+        return build_game_state_message(state, viewer_user_id)
 
     @staticmethod
     def _resolve_player_id(state: GameState, user_id: str) -> str:
@@ -150,4 +190,34 @@ def _with_player_id(command: GameCommand, player_id: str) -> GameCommand:
         return PassBuy(player_id=player_id)
     if isinstance(command, EndTurn):
         return EndTurn(player_id=player_id)
+    if isinstance(command, PayJailFine):
+        return PayJailFine(player_id=player_id)
+    if isinstance(command, UseJailCard):
+        return UseJailCard(player_id=player_id)
+    if isinstance(command, BuildHouse):
+        return BuildHouse(player_id=player_id, position=command.position)
+    if isinstance(command, SellHouse):
+        return SellHouse(player_id=player_id, position=command.position)
+    if isinstance(command, Mortgage):
+        return Mortgage(player_id=player_id, position=command.position)
+    if isinstance(command, Unmortgage):
+        return Unmortgage(player_id=player_id, position=command.position)
+    if isinstance(command, ProposeTrade):
+        return ProposeTrade(
+            player_id=player_id,
+            target_id=command.target_id,
+            proposer_offer=command.proposer_offer,
+            target_request=command.target_request,
+        )
+    if isinstance(command, RespondTrade):
+        return RespondTrade(
+            player_id=player_id,
+            trade_id=command.trade_id,
+            response=command.response,
+            counter_offer=command.counter_offer,
+        )
+    if isinstance(command, PlaceBid):
+        return PlaceBid(player_id=player_id, amount=command.amount)
+    if isinstance(command, DeclareBankruptcy):
+        return DeclareBankruptcy(player_id=player_id)
     return command
