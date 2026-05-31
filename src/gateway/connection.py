@@ -15,6 +15,7 @@ from gateway.dispatcher import dispatch
 from protocol.ws.envelope import make_outbound
 from protocol.ws.errors import WsErrorCode
 from protocol.ws.schemas import ErrorPayload, PingPayload
+from gateway.backplane import Backplane
 
 logger = structlog.get_logger(__name__)
 
@@ -35,6 +36,7 @@ class Connection:
         self.last_pong_ts: datetime = datetime.now(UTC)
         self._queue = SendQueue()
         self._closed = False
+        self._stop = asyncio.Event()
 
     def enqueue(self, msg: dict[str, Any]) -> bool:
         return self._queue.put(msg)
@@ -68,6 +70,7 @@ class Connection:
         if self._closed:
             return
         self._closed = True
+        self._stop.set()
         self._queue.put_sentinel()
         try:
             await self.websocket.close(code=code)
@@ -88,9 +91,10 @@ class Connection:
         except* (WebSocketDisconnect, asyncio.CancelledError):
             pass
         except* Exception as eg:
-            log.exception("connection_task_error", errors=str(eg))
+            log.error("connection_task_error", errors=str(eg))
         finally:
             self._closed = True
+            self._stop.set()
             self._queue.put_sentinel()
 
     async def _send_loop(self, log: Any) -> None:
@@ -113,10 +117,20 @@ class Connection:
                 await dispatch(self, text, backplane)
         except WebSocketDisconnect:
             log.info("connection_closed_by_client")
+        finally:
+            # Signal the send/heartbeat loops to wind down so run() returns promptly and
+            # disconnect cleanup fires immediately (not after the next ~20s heartbeat).
+            self._stop.set()
+            self._queue.put_sentinel()
 
     async def _heartbeat_loop(self, log: Any) -> None:
-        while True:
-            await asyncio.sleep(WS_HEARTBEAT_INTERVAL_S)
+        while not self._stop.is_set():
+            try:
+                # Wake immediately when stopped; otherwise tick every interval.
+                await asyncio.wait_for(self._stop.wait(), timeout=WS_HEARTBEAT_INTERVAL_S)
+                return
+            except asyncio.TimeoutError:
+                pass
             ping = make_outbound("connection.ping", PingPayload())
             ok = self._queue.put(ping)
             if not ok:
