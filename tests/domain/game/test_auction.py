@@ -119,3 +119,21 @@ def test_place_bid_via_engine(two_player_game: GameState, clock: FixedClock) -> 
     new_state, _ = apply_cmd(state, PlaceBid(player_id=p2.id, amount=80), clock)
     assert new_state.auction is not None
     assert new_state.auction.highest_bid == 80
+
+
+def test_non_current_player_can_bid_via_engine(
+    two_player_game: GameState, clock: FixedClock
+) -> None:
+    # An auction is open to ALL solvent players, not just whoever's turn it is. The
+    # current player is p1; p2 (not the current player) must still be able to bid —
+    # the engine's "not your turn" guard must NOT apply to PlaceBid. (Regression: the
+    # guard previously blocked every non-current bidder, so auctions never progressed.)
+    state = _auction_state(two_player_game, clock)
+    p1, p2 = state.players[0], state.players[1]
+    state = with_phase(state, TurnPhase.AUCTION, current_player_id=p1.id)
+    state, _ = apply_cmd(state, PlaceBid(player_id=p1.id, amount=60), clock)
+
+    new_state, _ = apply_cmd(state, PlaceBid(player_id=p2.id, amount=80), clock)
+    assert new_state.auction is not None
+    assert new_state.auction.highest_bid == 80
+    assert new_state.auction.highest_bidder_id == p2.id
