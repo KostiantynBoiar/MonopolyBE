@@ -59,7 +59,7 @@ async def mongo_user_pair(mongo_app: FastAPI):
         display_name="Guest User",
         password_hash=hash_password("password123"),
     )
-    host_token = create_access_token(host.id, settings).access_token
-    guest_token = create_access_token(guest.id, settings).access_token
+    host_token = create_access_token(host.id, settings)
+    guest_token = create_access_token(guest.id, settings)
 
     yield (host.id, host_token), (guest.id, guest_token)

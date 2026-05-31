@@ -5,7 +5,14 @@ from fastapi import APIRouter, Depends
 from application.dependencies import get_user_service
 from application.services.user_service import UserService
 from core.dependencies import get_current_user_id
-from protocol.rest.auth import AuthResponse, LoginRequest, MeResponse, RegisterRequest
+from protocol.rest.auth import (
+    AuthResponse,
+    LoginRequest,
+    LogoutRequest,
+    MeResponse,
+    RefreshRequest,
+    RegisterRequest,
+)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -24,6 +31,22 @@ async def login(
     service: Annotated[UserService, Depends(get_user_service)],
 ) -> AuthResponse:
     return await service.login(body)
+
+
+@router.post("/refresh", response_model=AuthResponse)
+async def refresh(
+    body: RefreshRequest,
+    service: Annotated[UserService, Depends(get_user_service)],
+) -> AuthResponse:
+    return await service.refresh(body.refresh_token)
+
+
+@router.post("/logout", status_code=204)
+async def logout(
+    body: LogoutRequest,
+    service: Annotated[UserService, Depends(get_user_service)],
+) -> None:
+    await service.logout(body.refresh_token)
 
 
 @router.get("/me", response_model=MeResponse)

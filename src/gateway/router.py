@@ -6,6 +6,7 @@ from application.services.session_service import SessionService
 from core.config import get_settings
 from core.exceptions import NotMemberError, UnauthorizedError
 from core.security import decode_access_token
+from domain.session.schemas import SessionStatus
 from gateway.backplane import Backplane
 from gateway.connection import Connection
 from gateway.manager import ConnectionManager
@@ -15,6 +16,34 @@ from protocol.ws.schemas import WelcomePayload
 logger = structlog.get_logger(__name__)
 
 ws_router = APIRouter()
+
+
+async def _cleanup_on_disconnect(
+    manager: ConnectionManager,
+    backplane: Backplane,
+    session_service: SessionService,
+    session_id: str,
+    user_id: str,
+) -> None:
+    """When the last connection for a user drops from a WAITING room, treat it as a
+    leave: remove the member, reassign host if needed, and delete the room when empty.
+    In-progress games are left untouched (players are expected to reconnect)."""
+    # Local presence only (single-instance assumption — see docs/game-protocol limitations).
+    if any(c.user_id == user_id for c in manager.local_connections(session_id)):
+        return
+    try:
+        session = await session_service.assert_member(session_id, user_id)
+        if session.status != SessionStatus.WAITING:
+            return
+        remaining = await session_service.leave(session_id, user_id)
+        if remaining is not None:
+            from api.sessions.router import _broadcast_session_updated
+
+            await _broadcast_session_updated(backplane, remaining)
+    except NotMemberError:
+        return
+    except Exception:
+        logger.exception("disconnect_cleanup_failed", session_id=session_id, user_id=user_id)
 
 
 def _extract_token(websocket: WebSocket) -> str | None:
@@ -83,6 +112,7 @@ async def ws_endpoint(websocket: WebSocket, session_id: str) -> None:
     finally:
         manager.unregister(conn)
         await backplane.unsubscribe(session_id)
+        await _cleanup_on_disconnect(manager, backplane, session_service, session_id, user_id)
         logger.info(
             "ws_disconnected",
             session_id=session_id,

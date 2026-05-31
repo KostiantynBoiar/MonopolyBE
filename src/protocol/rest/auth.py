@@ -19,6 +19,18 @@ class LoginRequest(BaseModel):
     password: str = Field(min_length=1, max_length=128)
 
 
+class RefreshRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    refresh_token: str = Field(min_length=1)
+
+
+class LogoutRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    refresh_token: str = Field(min_length=1)
+
+
 class UserPublic(BaseModel):
     id: str
     email: EmailStr
@@ -30,6 +42,8 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: Literal["bearer"] = "bearer"
     expires_in: int
+    refresh_token: str
+    refresh_expires_in: int
 
 
 class AuthResponse(BaseModel):
