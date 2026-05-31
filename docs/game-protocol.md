@@ -1,4 +1,4 @@
-# Game Protocol (in-game play)
+  # Game Protocol (in-game play)
 
 FE-facing contract for the **in-game** phase: how a game starts, the `game.state` snapshot every
 client renders, and every `game.*` intent a client can send. The lobby/session + chat layer (auth,

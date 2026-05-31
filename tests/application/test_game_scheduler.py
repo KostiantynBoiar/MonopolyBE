@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
-from motor.motor_asyncio import AsyncIOMotorClient
+from asgi_lifespan import LifespanManager
 
 from application.services.game_scheduler import GameScheduler
 from application.services.game_service import GameService
@@ -32,14 +32,14 @@ class FakeBackplane:
 
 @pytest.fixture
 async def db():
-    # Direct Motor connection — deliberately NOT the app lifespan, so the app's own
-    # background GameScheduler doesn't race the scheduler under test.
-    settings = get_settings()
-    client = AsyncIOMotorClient(settings.mongodb_uri)
-    try:
-        yield client[settings.mongodb_db]
-    finally:
-        client.close()
+    # Use the app lifespan (Motor bound to the test loop, like the infra tests), but
+    # STOP the app's own background GameScheduler so it can't race the one under test.
+    from main import create_app
+
+    app = create_app()
+    async with LifespanManager(app):
+        await app.state.game_scheduler.stop()
+        yield app.state.mongo.db
 
 
 async def _started_game(db):
@@ -70,7 +70,7 @@ async def test_scheduler_skips_unexpired_auction(db) -> None:
 
     fake = FakeBackplane()
     scheduler = GameScheduler(db, fake, get_settings())  # type: ignore[arg-type]
-    await scheduler._tick()
+    await scheduler._tick_one(session.id)
 
     # Auction not expired → no broadcast for this game, auction still present.
     # (in/not-in rather than == because the dev DB is shared across tests.)
@@ -90,7 +90,7 @@ async def test_scheduler_resolves_expired_auction(db) -> None:
 
     fake = FakeBackplane()
     scheduler = GameScheduler(db, fake, get_settings())  # type: ignore[arg-type]
-    await scheduler._tick()
+    await scheduler._tick_one(session.id)
 
     # Expired → resolved (no bids → property stays unowned) + a broadcast for this game.
     assert session.id in fake.game_state_calls

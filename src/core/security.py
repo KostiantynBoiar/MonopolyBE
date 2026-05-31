@@ -1,3 +1,5 @@
+import hashlib
+import secrets
 from datetime import UTC, datetime, timedelta
 
 import bcrypt
@@ -5,7 +7,6 @@ import jwt
 
 from core.config import Settings
 from core.exceptions import UnauthorizedError
-from protocol.rest.auth import TokenResponse
 
 
 def hash_password(plain: str) -> str:
@@ -16,12 +17,21 @@ def verify_password(plain: str, hashed: str) -> bool:
     return bcrypt.checkpw(plain.encode(), hashed.encode())
 
 
-def create_access_token(user_id: str, settings: Settings) -> TokenResponse:
-    expires_in = settings.jwt_expire_minutes * 60
+def generate_refresh_token() -> str:
+    """Opaque, high-entropy refresh token handed to the client (raw value)."""
+    return secrets.token_urlsafe(32)
+
+
+def hash_refresh_token(token: str) -> str:
+    """Only the hash is persisted, so a DB leak can't be replayed as a valid token."""
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def create_access_token(user_id: str, settings: Settings) -> str:
+    """Mint a short-lived access JWT (returns the encoded token string)."""
     expire_at = datetime.now(UTC) + timedelta(minutes=settings.jwt_expire_minutes)
     payload = {"sub": user_id, "exp": expire_at}
-    token = jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
-    return TokenResponse(access_token=token, expires_in=expires_in)
+    return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
 
 
 def decode_access_token(token: str, settings: Settings) -> str:

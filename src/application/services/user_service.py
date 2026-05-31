@@ -1,17 +1,26 @@
+from datetime import UTC, datetime, timedelta
 from typing import Self
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from core.config import Settings
-from core.exceptions import InvalidCredentialsError, NotFoundError
-from core.security import create_access_token, hash_password, verify_password
+from core.exceptions import InvalidCredentialsError, NotFoundError, UnauthorizedError
+from core.security import (
+    create_access_token,
+    generate_refresh_token,
+    hash_password,
+    hash_refresh_token,
+    verify_password,
+)
 from domain.user.schemas import User
+from infra.mongo.refresh_tokens.repository import RefreshTokenRepository
 from infra.mongo.users.repository import UserRepository
 from protocol.rest.auth import (
     AuthResponse,
     LoginRequest,
     MeResponse,
     RegisterRequest,
+    TokenResponse,
     UserPublic,
 )
 
@@ -26,13 +35,19 @@ def _to_public(user: User) -> UserPublic:
 
 
 class UserService:
-    def __init__(self, repository: UserRepository, settings: Settings) -> None:
+    def __init__(
+        self,
+        repository: UserRepository,
+        settings: Settings,
+        refresh_tokens: RefreshTokenRepository,
+    ) -> None:
         self._repository = repository
         self._settings = settings
+        self._refresh_tokens = refresh_tokens
 
     @classmethod
     def from_db(cls, db: AsyncIOMotorDatabase, settings: Settings) -> Self:
-        return cls(UserRepository(db), settings)
+        return cls(UserRepository(db), settings, RefreshTokenRepository(db))
 
     async def register(self, data: RegisterRequest) -> AuthResponse:
         password_hash = hash_password(data.password)
@@ -41,7 +56,7 @@ class UserService:
             display_name=data.display_name,
             password_hash=password_hash,
         )
-        token = create_access_token(user.id, self._settings)
+        token = await self._issue_tokens(user.id)
         return AuthResponse(user=_to_public(user), token=token)
 
     async def login(self, data: LoginRequest) -> AuthResponse:
@@ -53,11 +68,41 @@ class UserService:
         if not verify_password(data.password, password_hash):
             raise InvalidCredentialsError()
 
-        token = create_access_token(user.id, self._settings)
+        token = await self._issue_tokens(user.id)
         return AuthResponse(user=_to_public(user), token=token)
+
+    async def refresh(self, refresh_token: str) -> AuthResponse:
+        """Single-use rotation: consume the old refresh token, issue a fresh pair."""
+        user_id = await self._refresh_tokens.consume(hash_refresh_token(refresh_token))
+        if user_id is None:
+            raise UnauthorizedError("Invalid or expired refresh token")
+        user = await self._repository.find_by_id(user_id)
+        if user is None:
+            raise UnauthorizedError("Invalid or expired refresh token")
+        token = await self._issue_tokens(user.id)
+        return AuthResponse(user=_to_public(user), token=token)
+
+    async def logout(self, refresh_token: str) -> None:
+        await self._refresh_tokens.revoke(hash_refresh_token(refresh_token))
 
     async def get_me(self, user_id: str) -> MeResponse:
         user = await self._repository.find_by_id(user_id)
         if user is None:
             raise NotFoundError("User not found")
         return MeResponse(user=_to_public(user))
+
+    async def _issue_tokens(self, user_id: str) -> TokenResponse:
+        access = create_access_token(user_id, self._settings)
+        raw_refresh = generate_refresh_token()
+        refresh_days = self._settings.refresh_token_expire_days
+        await self._refresh_tokens.insert(
+            token_hash=hash_refresh_token(raw_refresh),
+            user_id=user_id,
+            expires_at=datetime.now(UTC) + timedelta(days=refresh_days),
+        )
+        return TokenResponse(
+            access_token=access,
+            expires_in=self._settings.jwt_expire_minutes * 60,
+            refresh_token=raw_refresh,
+            refresh_expires_in=refresh_days * 86_400,
+        )

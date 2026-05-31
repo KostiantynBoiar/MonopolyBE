@@ -13,7 +13,7 @@ def make_token():
     settings = get_settings()
 
     def _make(user_id: str) -> str:
-        return create_access_token(user_id, settings).access_token
+        return create_access_token(user_id, settings)
 
     return _make
 
