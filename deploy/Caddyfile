@@ -1,0 +1,13 @@
+# API-only reverse proxy (FE on Vercel, BE on this VPS).
+# Caddy terminates TLS for the API subdomain and proxies everything (REST under
+# /api/v1 and the game WebSocket under /ws/*) to the FastAPI container.
+# WebSocket upgrades pass through `reverse_proxy` transparently.
+
+{
+	email {$ACME_EMAIL}
+}
+
+{$API_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy api:8000
+}
