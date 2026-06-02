@@ -81,7 +81,47 @@ def resolve_bankruptcy(state: GameState, debtor_id: str) -> GameState:
             "chest_deck": chest_deck,
         }
     )
-    return check_win_condition(new_state)
+    resolved = check_win_condition(new_state)
+    if resolved.status == GameStatus.FINISHED:
+        return resolved
+    # The bankrupt player was the current player; if the game continues, hand the turn to
+    # the next active player. Otherwise current_player_id stays on the eliminated player
+    # and the next end_turn fails (StopIteration over active players) → softlock.
+    return _advance_turn_off_bankrupt(resolved, debtor_id)
+
+
+def _advance_turn_off_bankrupt(state: GameState, bankrupt_id: str) -> GameState:
+    players = list(state.players)
+    n = len(players)
+    start = next(i for i, p in enumerate(players) if p.id == bankrupt_id)
+
+    next_player = None
+    wrapped = False
+    for offset in range(1, n + 1):
+        idx = start + offset
+        candidate = players[idx % n]
+        if not candidate.is_bankrupt:
+            next_player = candidate
+            wrapped = idx >= n
+            break
+    if next_player is None:
+        return state  # no active players left (win condition already handled this)
+
+    next_phase = (
+        TurnPhase.JAIL_DECISION if next_player.jail_status is not None else TurnPhase.PRE_ROLL
+    )
+    turn = state.turn.model_copy(
+        update={
+            "current_player_id": next_player.id,
+            "phase": next_phase,
+            "turn_number": state.turn.turn_number + 1,
+            "round_number": state.turn.round_number + (1 if wrapped else 0),
+            "dice_roll": None,
+            "doubles_streak": 0,
+            "pending_buy_position": None,
+        }
+    )
+    return state.model_copy(update={"turn": turn})
 
 
 def check_win_condition(state: GameState) -> GameState:

@@ -8,6 +8,8 @@ from domain.game.enums import GameStatus, TradeStatus, TurnPhase
 from domain.game.exceptions import IllegalMove
 from domain.game.schemas.state import AuctionBid, AuctionState, GameState
 from domain.game.rules.helpers import get_player_by_id_from_state
+from domain.game.board_data import get_board_space
+from domain.game.rules.helpers import refresh_all_net_worth, update_player_net_worth
 
 
 def start_auction(state: GameState, property_position: int, now_ms: int) -> GameState:
@@ -53,9 +55,6 @@ def resolve_auction(state: GameState) -> GameState:
     if state.auction is None:
         return state
 
-    from domain.game.board_data import get_board_space
-    from domain.game.rules.helpers import refresh_all_net_worth, update_player_net_worth
-
     auction = state.auction
     position = auction.property_position
     spaces = list(state.spaces)
@@ -79,7 +78,10 @@ def resolve_auction(state: GameState) -> GameState:
             tuple(spaces),
         )
 
-    turn = state.turn.model_copy(update={"phase": TurnPhase.POST_ROLL})
+    # If the auction was opened by passing on a doubles roll, the deferred extra roll is
+    # granted once the auction resolves (return to PRE_ROLL); otherwise back to POST_ROLL.
+    next_phase = TurnPhase.PRE_ROLL if state.turn.doubles_streak > 0 else TurnPhase.POST_ROLL
+    turn = state.turn.model_copy(update={"phase": next_phase})
     return state.model_copy(
         update={
             "players": refresh_all_net_worth(
