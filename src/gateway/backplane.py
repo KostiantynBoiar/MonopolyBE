@@ -18,8 +18,8 @@ logger = structlog.get_logger(__name__)
 # each node renders a client-safe, viewer-scoped frame for its local connections.
 _GAME_STATE_BROADCAST = "__game_state_broadcast__"
 
-# (state_dict, user_id) -> client game.state frame (without seq).
-GameStateRenderer = Callable[[dict[str, Any], str], dict[str, Any]]
+# (state_dict, user_id, timeline) -> client game.state frame (without seq).
+GameStateRenderer = Callable[[dict[str, Any], str, list[dict[str, Any]]], dict[str, Any]]
 
 
 class Backplane:
@@ -86,15 +86,26 @@ class Backplane:
         msg["seq"] = seq
         await self._cmd.publish(f"session:{session_id}", json.dumps(msg))
 
-    async def publish_game_state(self, session_id: str, state_dict: dict[str, Any]) -> None:
+    async def publish_game_state(
+        self,
+        session_id: str,
+        state_dict: dict[str, Any],
+        timeline: list[dict[str, Any]] | None = None,
+    ) -> None:
         """Broadcast a game state to all members, rendered per-viewer on receipt.
         The full state (with server-only fields) is carried over Redis; each node
         renders a client-safe, viewer-scoped game.state for its local connections,
-        all sharing the single seq stamped here."""
+        all sharing the single seq stamped here. `timeline` is identical for every
+        viewer (it describes what happened) and is attached as-is."""
         if self._cmd is None:
             return
         seq = await self._cmd.incr(f"seq:{session_id}")
-        envelope = {"type": _GAME_STATE_BROADCAST, "seq": seq, "state": state_dict}
+        envelope = {
+            "type": _GAME_STATE_BROADCAST,
+            "seq": seq,
+            "state": state_dict,
+            "timeline": timeline or [],
+        }
         await self._cmd.publish(f"session:{session_id}", json.dumps(envelope))
 
     async def current_seq(self, session_id: str) -> int:
@@ -170,10 +181,11 @@ class Backplane:
         if renderer is None:
             return
         state_dict = msg["state"]
+        timeline = msg.get("timeline") or []
         seq = msg.get("seq")
         for conn in self._manager.local_connections(session_id):
             try:
-                frame = renderer(state_dict, conn.user_id)
+                frame = renderer(state_dict, conn.user_id, timeline)
             except Exception:
                 logger.exception("game_state_render_failed", session_id=session_id)
                 continue

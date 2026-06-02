@@ -23,8 +23,9 @@ from domain.game.schemas.commands import (
     UseJailCard,
 )
 from domain.game.schemas.state import TradeOffer
-from protocol.ws.envelope import RawEnvelope
+from protocol.ws.envelope import RawEnvelope, make_outbound
 from protocol.ws.schemas import (
+    AnimationContinuePayload,
     BuildHousePayload,
     BuyPropertyPayload,
     DeclareBankruptcyPayload,
@@ -57,6 +58,9 @@ _place_bid_adapter: TypeAdapter[PlaceBidPayload] = TypeAdapter(PlaceBidPayload)
 _declare_bankruptcy_adapter: TypeAdapter[DeclareBankruptcyPayload] = TypeAdapter(
     DeclareBankruptcyPayload
 )
+_animation_continue_adapter: TypeAdapter[AnimationContinuePayload] = TypeAdapter(
+    AnimationContinuePayload
+)
 
 
 def _game_service(conn: Connection) -> GameService:
@@ -83,7 +87,7 @@ async def _apply_and_publish(
 ) -> None:
     service = _game_service(conn)
     try:
-        state = await service.apply_intent(conn.session_id, conn.user_id, command)
+        state, timeline = await service.apply_intent(conn.session_id, conn.user_id, command)
     except IllegalMove as exc:
         await conn.send_error("illegal_action", exc.message)
         return
@@ -94,8 +98,9 @@ async def _apply_and_publish(
         await conn.send_error("illegal_action", "state conflict; resync from latest snapshot")
         return
 
-    # Per-viewer broadcast: each member receives a snapshot scoped to themselves.
-    await backplane.publish_game_state(conn.session_id, state.model_dump(mode="json"))
+    # Per-viewer broadcast: each member receives a snapshot scoped to themselves, plus the
+    # (shared) animation timeline describing how this state was reached.
+    await backplane.publish_game_state(conn.session_id, state.model_dump(mode="json"), timeline)
 
     if state.status == GameStatus.FINISHED:
         await _finish_session(conn, backplane)
@@ -283,3 +288,26 @@ async def handle_game_declare_bankruptcy(
 ) -> None:
     _declare_bankruptcy_adapter.validate_python(envelope.payload)
     await _apply_and_publish(conn, backplane, DeclareBankruptcy(player_id=""))
+
+
+async def handle_game_animation_continue(
+    conn: Connection,
+    envelope: RawEnvelope,
+    backplane: Backplane,
+) -> None:
+    """Resume a paused animation. This is NOT a game command — it never touches the engine
+    or game state. We authorize the sender (only the affected/current player) then
+    re-broadcast a continue signal so every client un-pauses the same gate together."""
+    payload = _animation_continue_adapter.validate_python(envelope.payload)
+    service = _game_service(conn)
+    allowed = await service.authorize_continue(
+        conn.session_id, conn.user_id, payload.interaction_id
+    )
+    if not allowed:
+        await conn.send_error("illegal_action", "not allowed to continue this animation")
+        return
+    msg = make_outbound(
+        "game.animation_continue",
+        AnimationContinuePayload(interaction_id=payload.interaction_id),
+    )
+    await backplane.publish(conn.session_id, msg)

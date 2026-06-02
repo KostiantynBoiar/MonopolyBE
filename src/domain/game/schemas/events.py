@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict
@@ -18,6 +19,10 @@ class PlayerMoved(BaseModel):
     from_position: int
     to_position: int
     dice_total: int
+    # Why the player moved — drives the animation timeline (speed/SFX). "dice" is a
+    # normal roll-walk, "card" is a card-induced displacement (faster), "teleport"/"jail"
+    # are instant. Defaults to "dice" so existing emitters/tests need no change.
+    reason: Literal["dice", "card", "teleport", "jail"] = "dice"
 
 
 class PassedGo(BaseModel):

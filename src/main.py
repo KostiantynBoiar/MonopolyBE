@@ -39,9 +39,9 @@ async def lifespan(app: FastAPI):
     manager = ConnectionManager()
     backplane = Backplane(redis_url=settings.redis_url, manager=manager)
 
-    def _render_game_state(state_dict: dict, user_id: str) -> dict:
+    def _render_game_state(state_dict: dict, user_id: str, timeline: list[dict]) -> dict:
         return build_game_state_message(
-            GameState.model_validate(state_dict), viewer_user_id=user_id
+            GameState.model_validate(state_dict), viewer_user_id=user_id, timeline=timeline
         )
 
     backplane.set_game_state_renderer(_render_game_state)
