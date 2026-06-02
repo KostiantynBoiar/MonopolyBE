@@ -23,7 +23,7 @@ from domain.game.schemas.cards import (
     PayEffect,
     RepairsEffect,
 )
-from domain.game.schemas.events import CardDrawn, SentToJail
+from domain.game.schemas.events import CardDrawn, PlayerMoved, SentToJail
 from domain.game.schemas.state import DiceRoll, GameState, PlayerState
 from domain.game.rules.helpers import (
     get_player_by_id_from_state,
@@ -117,6 +117,7 @@ def apply_card_effect(
         new_pos, passed_go = advance_position(player.position, _steps_to(player.position, effect.position))
         moved = player.model_copy(update={"position": new_pos})
         state, _ = _set_player(state, moved)
+        events.append(_card_move_event(player, new_pos))
         if passed_go and effect.collect_go_bonus:
             state, go_event = apply_go_salary(state, moved, go_salary)
             events.append(go_event)
@@ -135,6 +136,7 @@ def apply_card_effect(
         )
         moved = player.model_copy(update={"position": new_pos})
         state, _ = _set_player(state, moved)
+        events.append(_card_move_event(player, new_pos))
         if passed_go:
             state, go_event = apply_go_salary(state, moved, go_salary)
             events.append(go_event)
@@ -168,6 +170,7 @@ def apply_card_effect(
         new_pos = (player.position - effect.spaces) % 40
         moved = player.model_copy(update={"position": new_pos})
         state, _ = _set_player(state, moved)
+        events.append(_card_move_event(player, new_pos))
         if recursion_depth >= CARD_LANDING_RECURSION_LIMIT:
             return state, events, sent_to_jail
         state, landing_events, jail = resolve_landing(
@@ -290,6 +293,21 @@ def draw_and_apply(
     )
     events.extend(effect_events)
     return state, events, active, sent_to_jail
+
+
+def _card_move_event(player: PlayerState, to_pos: int) -> PlayerMoved:
+    """A card-induced displacement (e.g. 'advance to Boardwalk'). reason='card' so the
+    animation timeline renders it as a fast move distinct from a dice walk. dice_total is
+    0 — the move wasn't driven by the dice."""
+    return PlayerMoved(
+        player_id=player.id,
+        player_name=player.display_name,
+        player_token=player.token,
+        from_position=player.position,
+        to_position=to_pos,
+        dice_total=0,
+        reason="card",
+    )
 
 
 def _steps_to(from_pos: int, to_pos: int) -> int:

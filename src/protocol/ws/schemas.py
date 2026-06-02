@@ -23,6 +23,15 @@ class PongPayload(BaseModel):
     model_config = ConfigDict(frozen=True)
 
 
+class AnimationContinuePayload(BaseModel):
+    """Sent by the affected player to resume a paused animation, and re-broadcast by the
+    server to all members so every client un-pauses the same gate together."""
+
+    model_config = ConfigDict(frozen=True)
+
+    interaction_id: str = Field(min_length=1, max_length=128)
+
+
 class WelcomePayload(BaseModel):
     model_config = ConfigDict(frozen=True)
 

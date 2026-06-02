@@ -10,6 +10,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from core.config import Settings, get_settings
 from core.exceptions import GameNotFoundError, GameVersionConflictError, NotMemberError
 from domain.game import engine
+from domain.game.animation import build_timeline
 from domain.game.exceptions import IllegalMove
 from domain.game.rng import FixedClock
 from domain.game.rules.actions import with_actions
@@ -52,11 +53,16 @@ def _lock_for(session_id: str) -> asyncio.Lock:
     return _session_locks[session_id]
 
 
-def build_game_state_message(state: GameState, viewer_user_id: str | None = None) -> dict:
+def build_game_state_message(
+    state: GameState,
+    viewer_user_id: str | None = None,
+    timeline: list[dict] | None = None,
+) -> dict:
     """Build a per-viewer `game.state` outbound frame: actions + viewer_id scoped to
     the given user, with server-only fields stripped. Pure (no IO) so it can also be
     used as the backplane's per-viewer renderer. The returned frame has no `seq` —
-    the broadcaster stamps it."""
+    the broadcaster stamps it. `timeline` is the (viewer-independent) animation timeline
+    the FE replays; empty for reconnect/system broadcasts."""
     player_id = None
     if viewer_user_id is not None:
         for player in state.players:
@@ -69,6 +75,7 @@ def build_game_state_message(state: GameState, viewer_user_id: str | None = None
         payload.pop(field, None)
     if player_id is not None:
         payload["viewer_id"] = player_id
+    payload["animation_timeline"] = timeline or []
     return make_outbound("game.state", payload)
 
 
@@ -132,7 +139,9 @@ class GameService:
         session_id: str,
         user_id: str,
         command: GameCommand,
-    ) -> GameState:
+    ) -> tuple[GameState, list[dict]]:
+        """Apply a command and return (new_state, animation_timeline). The timeline is a
+        snake_case projection of the engine's ordered event list, replayed by the FE."""
         async with _lock_for(session_id):
             stored = await self._games.find_by_session_id(session_id)
             if stored is None:
@@ -148,7 +157,7 @@ class GameService:
             clock = FixedClock(datetime.now(UTC))
 
             try:
-                new_state, _ = engine.apply(
+                new_state, events = engine.apply(
                     stored.state,
                     resolved,
                     rng=rng,
@@ -168,10 +177,25 @@ class GameService:
             )
             if updated is None:
                 raise GameVersionConflictError(session_id)
-            return updated.state
+            timeline = build_timeline(resolved, updated.state, events)
+            return updated.state, timeline
 
     def snapshot_message(self, state: GameState, viewer_user_id: str | None = None) -> dict:
+        # Reconnect / initial snapshot — no animation to replay (the FE just renders the
+        # current state), so the timeline is empty.
         return build_game_state_message(state, viewer_user_id)
+
+    async def authorize_continue(self, session_id: str, user_id: str, interaction_id: str) -> bool:
+        """Whether `user_id` may resume a paused animation (`animation_continue`). Only the
+        player whose turn it is, while a card interaction is pending. Does not mutate state."""
+        stored = await self._games.find_by_session_id(session_id)
+        if stored is None or stored.state.active_card is None:
+            return False
+        try:
+            player_id = self._resolve_player_id(stored.state, user_id)
+        except NotMemberError:
+            return False
+        return player_id == stored.state.turn.current_player_id
 
     @staticmethod
     def _resolve_player_id(state: GameState, user_id: str) -> str:
