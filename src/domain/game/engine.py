@@ -338,9 +338,17 @@ def _execute_move(
         return working.model_copy(update={"turn": new_turn}), events
 
     if is_doubles and extra_roll_allowed:
-        next_phase = TurnPhase.PRE_ROLL
-        pending_buy = None
         streak = new_streak
+        if working.turn.pending_buy_position is not None:
+            # Landed on a buyable tile: the player must resolve the purchase (buy/auction)
+            # BEFORE taking the doubles extra roll. Stay in POST_ROLL and keep the pending
+            # buy; the extra roll is deferred and granted once buy/pass is handled (the
+            # >0 doubles_streak is the signal — see _handle_buy_property / resolve_auction).
+            next_phase = TurnPhase.POST_ROLL
+            pending_buy = working.turn.pending_buy_position
+        else:
+            next_phase = TurnPhase.PRE_ROLL
+            pending_buy = None
     else:
         next_phase = working.turn.phase
         pending_buy = working.turn.pending_buy_position
@@ -451,7 +459,12 @@ def _handle_buy_property(
     idx = next(i for i, p in enumerate(players) if p.id == player.id)
     players[idx] = update_player_net_worth(updated_player, tuple(spaces))
 
-    new_turn = state.turn.model_copy(update={"pending_buy_position": None})
+    # If the player rolled doubles, the extra roll was deferred until the purchase was
+    # resolved — grant it now by returning to PRE_ROLL.
+    next_phase = TurnPhase.PRE_ROLL if state.turn.doubles_streak > 0 else state.turn.phase
+    new_turn = state.turn.model_copy(
+        update={"pending_buy_position": None, "phase": next_phase}
+    )
     event = PropertyBought(
         player_id=player.id,
         player_name=player.display_name,
