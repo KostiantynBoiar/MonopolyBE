@@ -5,7 +5,7 @@ from datetime import datetime
 from uuid import uuid4
 
 from domain.game.board_data import BOARD
-from domain.game.constants import BANK_HOTELS, BANK_HOUSES, TOKEN_COLORS
+from domain.game.constants import BANK_HOTELS, BANK_HOUSES, TOKEN_COLORS, TURN_TIMEOUT_MS
 from domain.game.enums import GameStatus, TurnPhase
 from domain.game.rng import Clock
 from domain.game.rules.cards import initial_chance_deck, initial_chest_deck
@@ -65,6 +65,7 @@ def new_game(
             current_player_id=current_player.id,
             turn_number=1,
             round_number=1,
+            turn_deadline_ms=int(now.timestamp() * 1000) + TURN_TIMEOUT_MS,
         ),
         spaces=spaces,
         bank_houses=BANK_HOUSES,

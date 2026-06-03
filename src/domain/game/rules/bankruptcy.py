@@ -87,13 +87,15 @@ def resolve_bankruptcy(state: GameState, debtor_id: str) -> GameState:
     # The bankrupt player was the current player; if the game continues, hand the turn to
     # the next active player. Otherwise current_player_id stays on the eliminated player
     # and the next end_turn fails (StopIteration over active players) → softlock.
-    return _advance_turn_off_bankrupt(resolved, debtor_id)
+    return advance_turn_off_player(resolved, debtor_id)
 
 
-def _advance_turn_off_bankrupt(state: GameState, bankrupt_id: str) -> GameState:
+def advance_turn_off_player(state: GameState, eliminated_id: str) -> GameState:
+    """Hand the turn to the next active player when the current player is eliminated
+    (bankruptcy or surrender), so the turn never sticks on someone who's out."""
     players = list(state.players)
     n = len(players)
-    start = next(i for i, p in enumerate(players) if p.id == bankrupt_id)
+    start = next(i for i, p in enumerate(players) if p.id == eliminated_id)
 
     next_player = None
     wrapped = False

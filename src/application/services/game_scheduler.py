@@ -12,7 +12,8 @@ from domain.game.engine import apply
 from domain.game.enums import GameStatus
 from domain.game.rng import FixedClock
 from domain.game.rules.auction import is_auction_expired
-from domain.game.schemas.commands import AdvanceAuction, ExpireTrade
+from domain.game.rules.turn_timer import is_turn_expired
+from domain.game.schemas.commands import AdvanceAuction, ExpireTrade, TurnTimeout
 from gateway.backplane import Backplane
 from infra.mongo.games.repository import GameRepository
 
@@ -76,8 +77,6 @@ class GameScheduler:
         if stored is None:
             return
         state = stored.state
-        if state.auction is None and state.trade is None:
-            return
 
         now = datetime.now(UTC)
         now_ms = int(now.timestamp() * 1000)
@@ -89,6 +88,8 @@ class GameScheduler:
             command = AdvanceAuction()
         elif state.trade is not None and state.trade.expires_at <= now:
             command = ExpireTrade()
+        elif is_turn_expired(state, now_ms):
+            command = TurnTimeout()
 
         if command is None:
             return

@@ -102,6 +102,16 @@ class DeclareBankruptcy(BaseModel):
     player_id: str
 
 
+class Surrender(BaseModel):
+    """Voluntarily quit the game: properties return to the bank (free to buy again) and
+    the player's cash is split equally among the remaining players. Distinct from
+    bankruptcy (which transfers assets to a creditor)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    player_id: str
+
+
 class AdvanceAuction(BaseModel):
     """System command applied when an auction timer expires."""
 
@@ -110,6 +120,12 @@ class AdvanceAuction(BaseModel):
 
 class ExpireTrade(BaseModel):
     """System command applied when a trade offer expires."""
+
+    model_config = ConfigDict(frozen=True)
+
+
+class TurnTimeout(BaseModel):
+    """System command applied when the current player's turn timer expires (AFK)."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -129,8 +145,9 @@ PlayerCommand = (
     | RespondTrade
     | PlaceBid
     | DeclareBankruptcy
+    | Surrender
 )
 
-SystemCommand = AdvanceAuction | ExpireTrade
+SystemCommand = AdvanceAuction | ExpireTrade | TurnTimeout
 
 GameCommand = PlayerCommand | SystemCommand
