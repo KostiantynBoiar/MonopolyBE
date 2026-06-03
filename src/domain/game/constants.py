@@ -11,6 +11,12 @@ AUCTION_DURATION_MS = 30_000
 TRADE_DURATION_MS = 60_000
 CARD_LANDING_RECURSION_LIMIT = 3
 
+# Per-player turn timer: the current player has this long to make their next move
+# (refreshed on each action). On expiry the GameScheduler force-ends their turn and
+# records an AFK strike; at MAX_AFK_STRIKES the player is auto-surrendered.
+TURN_TIMEOUT_MS = 90_000
+MAX_AFK_STRIKES = 3
+
 BOARD_SIZE = 40
 GO_POSITION = 0
 JAIL_POSITION = 10

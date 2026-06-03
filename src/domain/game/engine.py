@@ -3,7 +3,7 @@ from __future__ import annotations
 import random
 
 from domain.game.board_data import get_board_space, is_purchasable
-from domain.game.constants import DOUBLES_JAIL_THRESHOLD
+from domain.game.constants import DOUBLES_JAIL_THRESHOLD, MAX_AFK_STRIKES
 from domain.game.enums import CardKind, TurnPhase
 from domain.game.exceptions import IllegalMove
 from domain.game.rng import Clock, roll_dice
@@ -24,7 +24,9 @@ from domain.game.schemas.commands import (
     RespondTrade,
     RollDice,
     SellHouse,
+    Surrender,
     SystemCommand,
+    TurnTimeout,
     Unmortgage,
     UseJailCard,
 )
@@ -32,16 +34,20 @@ from domain.game.schemas.events import (
     BuyDeclined,
     GameEvent,
     PlayerMoved,
+    PlayerSurrendered,
     PropertyBought,
     RolledDoubles,
     SentToJail,
     TurnEnded,
+    TurnTimedOut,
     event_to_log_entry,
 )
 from domain.game.schemas.state import DiceRoll, GameState
 from domain.game.rules.actions import with_actions
 from domain.game.rules.auction import is_auction_expired, place_bid, resolve_auction, start_auction
-from domain.game.rules.bankruptcy import check_win_condition, resolve_bankruptcy
+from domain.game.rules.bankruptcy import advance_turn_off_player, check_win_condition, resolve_bankruptcy
+from domain.game.rules.surrender import resolve_surrender
+from domain.game.rules.turn_timer import is_turn_expired, with_turn_deadline
 from domain.game.rules.payments import try_settle_debt
 from domain.game.rules.building import build_house, mortgage_property, sell_house, unmortgage_property
 from domain.game.rules.cards import return_jail_card_to_deck
@@ -73,7 +79,7 @@ def apply(
     now_ms = int(clock.now().timestamp() * 1000)
     now = clock.now()
 
-    if isinstance(command, (AdvanceAuction, ExpireTrade)):
+    if isinstance(command, (AdvanceAuction, ExpireTrade, TurnTimeout)):
         new_state, events = _handle_system(state, command, now_ms=now_ms, now=now)
     elif isinstance(command, (RespondTrade, PlaceBid)):
         # These come from a player who is NOT the current turn player: trade responses
@@ -83,18 +89,34 @@ def apply(
         new_state, events = _dispatch_player_command(
             state, command, rng, go_salary, jail_fine, now_ms=now_ms, now=now
         )
+        new_state = _reset_actor_strikes(new_state, command.player_id)
+        new_state = with_turn_deadline(new_state, now_ms)
         return with_actions(new_state), events
     else:
         _assert_current_player(state, command.player_id)
         new_state, events = _dispatch_player_command(
             state, command, rng, go_salary, jail_fine, now_ms=now_ms, now=now
         )
+        new_state = _reset_actor_strikes(new_state, command.player_id)
 
     new_state = _clear_active_card(state, new_state, command)
     new_state = try_settle_debt(new_state)
     new_state = check_win_condition(new_state)
+    # Refresh the current player's turn deadline on every applied command (any action
+    # resets the inactivity clock; a TurnTimeout starts the next player's clock).
+    new_state = with_turn_deadline(new_state, now_ms)
     new_state = _append_log(new_state, events, clock)
     return with_actions(new_state), events
+
+
+def _reset_actor_strikes(state: GameState, player_id: str) -> GameState:
+    """A player who just acted is not AFK — clear their strike counter."""
+    players = list(state.players)
+    for i, p in enumerate(players):
+        if p.id == player_id and p.afk_strikes:
+            players[i] = p.model_copy(update={"afk_strikes": 0})
+            return state.model_copy(update={"players": tuple(players)})
+    return state
 
 
 def _dispatch_player_command(
@@ -135,6 +157,8 @@ def _dispatch_player_command(
         return _handle_place_bid(state, command)
     if isinstance(command, DeclareBankruptcy):
         return _handle_declare_bankruptcy(state, command)
+    if isinstance(command, Surrender):
+        return _handle_surrender(state, command)
     raise IllegalMove("unknown command")
 
 
@@ -624,6 +648,41 @@ def _handle_declare_bankruptcy(state, command) -> tuple[GameState, list[GameEven
     return resolve_bankruptcy(state, command.player_id), []
 
 
+def _handle_surrender(state, command) -> tuple[GameState, list[GameEvent]]:
+    player = get_player_by_id_from_state(state, command.player_id)
+    if player.is_bankrupt:
+        raise IllegalMove("player is already out of the game")
+    event = PlayerSurrendered(
+        player_id=player.id, player_name=player.display_name, reason="voluntary"
+    )
+    return resolve_surrender(state, command.player_id), [event]
+
+
+def _handle_turn_timeout(state: GameState, now_ms: int) -> tuple[GameState, list[GameEvent]]:
+    if not is_turn_expired(state, now_ms):
+        return state, []  # not actually due (state changed since the scheduler checked)
+
+    current_id = state.turn.current_player_id
+    player = get_player_by_id_from_state(state, current_id)
+    strikes = player.afk_strikes + 1
+
+    players = list(state.players)
+    idx = next(i for i, p in enumerate(players) if p.id == current_id)
+    players[idx] = player.model_copy(update={"afk_strikes": strikes})
+    state = state.model_copy(update={"players": tuple(players)})
+
+    if strikes >= MAX_AFK_STRIKES:
+        # Auto-surrender the repeatedly-AFK player.
+        event = PlayerSurrendered(
+            player_id=current_id, player_name=player.display_name, reason="afk"
+        )
+        return resolve_surrender(state, current_id), [event]
+
+    # Otherwise just skip their turn (no auto-roll) and move to the next active player.
+    event = TurnTimedOut(player_id=current_id, player_name=player.display_name, strikes=strikes)
+    return advance_turn_off_player(state, current_id), [event]
+
+
 def _handle_system(
     state: GameState,
     command: SystemCommand,
@@ -639,6 +698,8 @@ def _handle_system(
         if state.trade is None or state.trade.expires_at > now:
             return state, []
         return expire_trade(state), []
+    if isinstance(command, TurnTimeout):
+        return _handle_turn_timeout(state, now_ms)
     return state, []
 
 

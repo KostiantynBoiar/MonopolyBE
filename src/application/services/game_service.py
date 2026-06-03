@@ -30,6 +30,7 @@ from domain.game.schemas.commands import (
     RespondTrade,
     RollDice,
     SellHouse,
+    Surrender,
     SystemCommand,
     Unmortgage,
     UseJailCard,
@@ -244,4 +245,6 @@ def _with_player_id(command: GameCommand, player_id: str) -> GameCommand:
         return PlaceBid(player_id=player_id, amount=command.amount)
     if isinstance(command, DeclareBankruptcy):
         return DeclareBankruptcy(player_id=player_id)
+    if isinstance(command, Surrender):
+        return Surrender(player_id=player_id)
     return command

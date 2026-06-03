@@ -23,6 +23,10 @@ class PongPayload(BaseModel):
     model_config = ConfigDict(frozen=True)
 
 
+class SurrenderPayload(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+
 class AnimationContinuePayload(BaseModel):
     """Sent by the affected player to resume a paused animation, and re-broadcast by the
     server to all members so every client un-pauses the same gate together."""

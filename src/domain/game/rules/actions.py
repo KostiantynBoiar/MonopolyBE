@@ -40,6 +40,7 @@ def compute_actions(state: GameState, player_id: str | None = None) -> ActionSet
             can_roll=True,
             can_pay_jail_fine=player.balance >= JAIL_FINE,
             can_use_jail_card=player.get_out_of_jail_cards > 0,
+            can_surrender=True,
         )
 
     if phase == TurnPhase.PRE_ROLL:
@@ -50,6 +51,7 @@ def compute_actions(state: GameState, player_id: str | None = None) -> ActionSet
             can_mortgage=has_any_mortgageable(state, pid),
             can_unmortgage=has_any_unmortgageable(state, pid),
             can_trade=state.trade is None and state.status.value == "in_progress",
+            can_surrender=True,
         )
 
     if phase == TurnPhase.POST_ROLL:
@@ -62,10 +64,11 @@ def compute_actions(state: GameState, player_id: str | None = None) -> ActionSet
             can_unmortgage=has_any_unmortgageable(state, pid),
             can_trade=state.trade is None,
             can_end_turn=pending is None,
+            can_surrender=True,
         )
 
     if phase == TurnPhase.MUST_PAY_RENT:
-        return ActionSet(can_end_turn=True)
+        return ActionSet(can_end_turn=True, can_surrender=True)
 
     if phase == TurnPhase.BANKRUPT_RESOLUTION:
         return ActionSet(

@@ -109,6 +109,22 @@ class CardDrawn(BaseModel):
     kind: str
 
 
+class PlayerSurrendered(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    player_id: str
+    player_name: str
+    reason: str  # "voluntary" | "afk"
+
+
+class TurnTimedOut(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    player_id: str
+    player_name: str
+    strikes: int
+
+
 GameEvent = (
     PlayerMoved
     | PassedGo
@@ -120,6 +136,8 @@ GameEvent = (
     | TaxPaid
     | TurnEnded
     | CardDrawn
+    | PlayerSurrendered
+    | TurnTimedOut
 )
 
 
@@ -218,5 +236,24 @@ def event_to_log_entry(event: GameEvent, ts: datetime) -> LogEntry:
                 player_id=e.player_id,
                 player_name=e.player_name,
                 text=f"drew card: {e.card_text}",
+                ts=ts,
+            )
+        case PlayerSurrendered() as e:
+            reason = "ran out of time and surrendered" if e.reason == "afk" else "surrendered"
+            return LogEntry(
+                id=entry_id,
+                kind=LogKind.EVENT,
+                player_id=e.player_id,
+                player_name=e.player_name,
+                text=reason,
+                ts=ts,
+            )
+        case TurnTimedOut() as e:
+            return LogEntry(
+                id=entry_id,
+                kind=LogKind.EVENT,
+                player_id=e.player_id,
+                player_name=e.player_name,
+                text=f"ran out of time (strike {e.strikes})",
                 ts=ts,
             )

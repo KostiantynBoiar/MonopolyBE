@@ -36,6 +36,7 @@ class ActionSet(BaseModel):
     can_use_jail_card: bool = False
     can_bid: bool = False
     can_declare_bankruptcy: bool = False
+    can_surrender: bool = False
 
 
 class SpaceOwnership(BaseModel):
@@ -65,6 +66,9 @@ class PlayerState(BaseModel):
     is_bankrupt: bool = False
     is_connected: bool = True
     net_worth: int = 0
+    # Consecutive turn-timer expirations (AFK). Reset to 0 when the player acts; at
+    # MAX_AFK_STRIKES the player is auto-surrendered.
+    afk_strikes: int = 0
 
 
 class TurnState(BaseModel):
@@ -78,6 +82,9 @@ class TurnState(BaseModel):
     doubles_streak: int = 0
     actions_available: ActionSet = Field(default_factory=ActionSet)
     pending_buy_position: int | None = None
+    # Absolute epoch-ms deadline for the current player's next action. The GameScheduler
+    # force-ends the turn once now >= this. Refreshed on every applied command.
+    turn_deadline_ms: int | None = None
 
 
 class LogEntry(BaseModel):

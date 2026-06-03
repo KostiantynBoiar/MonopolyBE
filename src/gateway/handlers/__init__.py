@@ -5,6 +5,7 @@ from collections.abc import Awaitable, Callable
 from gateway.handlers.chat import handle_chat_send, handle_pong, handle_sticker_send
 from gateway.handlers.game import (
     handle_game_animation_continue,
+    handle_game_surrender,
     handle_game_build_house,
     handle_game_buy_property,
     handle_game_declare_bankruptcy,
@@ -41,5 +42,6 @@ HANDLERS: dict[str, HandlerFunc] = {
     "game.respond_trade": handle_game_respond_trade,
     "game.place_bid": handle_game_place_bid,
     "game.declare_bankruptcy": handle_game_declare_bankruptcy,
+    "game.surrender": handle_game_surrender,
     "game.animation_continue": handle_game_animation_continue,
 }

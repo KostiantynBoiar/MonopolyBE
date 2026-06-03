@@ -19,6 +19,7 @@ from domain.game.schemas.commands import (
     RespondTrade,
     RollDice,
     SellHouse,
+    Surrender,
     Unmortgage,
     UseJailCard,
 )
@@ -38,6 +39,7 @@ from protocol.ws.schemas import (
     RespondTradePayload,
     RollDicePayload,
     SellHousePayload,
+    SurrenderPayload,
     UnmortgagePayload,
     UseJailCardPayload,
 )
@@ -61,6 +63,7 @@ _declare_bankruptcy_adapter: TypeAdapter[DeclareBankruptcyPayload] = TypeAdapter
 _animation_continue_adapter: TypeAdapter[AnimationContinuePayload] = TypeAdapter(
     AnimationContinuePayload
 )
+_surrender_adapter: TypeAdapter[SurrenderPayload] = TypeAdapter(SurrenderPayload)
 
 
 def _game_service(conn: Connection) -> GameService:
@@ -83,7 +86,8 @@ async def _apply_and_publish(
     | ProposeTrade
     | RespondTrade
     | PlaceBid
-    | DeclareBankruptcy,
+    | DeclareBankruptcy
+    | Surrender,
 ) -> None:
     service = _game_service(conn)
     try:
@@ -288,6 +292,15 @@ async def handle_game_declare_bankruptcy(
 ) -> None:
     _declare_bankruptcy_adapter.validate_python(envelope.payload)
     await _apply_and_publish(conn, backplane, DeclareBankruptcy(player_id=""))
+
+
+async def handle_game_surrender(
+    conn: Connection,
+    envelope: RawEnvelope,
+    backplane: Backplane,
+) -> None:
+    _surrender_adapter.validate_python(envelope.payload)
+    await _apply_and_publish(conn, backplane, Surrender(player_id=""))
 
 
 async def handle_game_animation_continue(
