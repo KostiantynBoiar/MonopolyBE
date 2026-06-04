@@ -64,6 +64,8 @@ def _to_detail(session: Session, user_id: str | None = None) -> SessionDetail:
                 display_name=m.display_name,
                 role=m.role,
                 joined_at=m.joined_at,
+                rating=m.rating,
+                calibration_complete=m.calibration_complete,
             )
             for m in session.members
         ],

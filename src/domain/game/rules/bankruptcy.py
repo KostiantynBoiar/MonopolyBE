@@ -67,6 +67,7 @@ def resolve_bankruptcy(state: GameState, debtor_id: str) -> GameState:
             "jail_status": None,
             "is_bankrupt": True,
             "position": 0,
+            "eliminated_at": state.turn.turn_number,
         }
     )
 

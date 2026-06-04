@@ -66,9 +66,14 @@ class PlayerState(BaseModel):
     is_bankrupt: bool = False
     is_connected: bool = True
     net_worth: int = 0
+    # ELO rating at game start (snapshot — ratings only change when a game finishes).
+    rating: int = 800
     # Consecutive turn-timer expirations (AFK). Reset to 0 when the player acts; at
     # MAX_AFK_STRIKES the player is auto-surrendered.
     afk_strikes: int = 0
+    # Turn number at which this player was eliminated (bankruptcy/surrender), or None if
+    # still in the game. Used to derive finish placement for rating.
+    eliminated_at: int | None = None
 
 
 class TurnState(BaseModel):

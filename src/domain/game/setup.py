@@ -18,9 +18,10 @@ from domain.game.schemas.state import (
 
 
 class GameMember:
-    def __init__(self, user_id: str, display_name: str) -> None:
+    def __init__(self, user_id: str, display_name: str, rating: int = 800) -> None:
         self.user_id = user_id
         self.display_name = display_name
+        self.rating = rating
 
 
 def new_game(
@@ -47,6 +48,7 @@ def new_game(
                 turn_order=turn_order,
                 balance=starting_balance,
                 net_worth=starting_balance,
+                rating=member.rating,
             )
         )
 

@@ -115,6 +115,15 @@ class GameRepository:
             state=stored_state,
         )
 
+    async def claim_for_rating(self, session_id: str) -> bool:
+        """Atomically mark a game as rated. Returns True only on the FIRST claim, so the
+        rating update runs exactly once even if both finish paths fire (or one retries)."""
+        result = await self._collection.find_one_and_update(
+            {"session_id": session_id, "rated": {"$ne": True}},
+            {"$set": {"rated": True}},
+        )
+        return result is not None
+
     @staticmethod
     def build_document(
         *,

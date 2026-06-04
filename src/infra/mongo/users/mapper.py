@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
 from uuid import uuid4
 
+from domain.rating.constants import INITIAL_RATING
 from domain.user.schemas import User
 from infra.mongo.users.document import UserDocument
 
@@ -11,6 +12,9 @@ def to_domain(doc: UserDocument) -> User:
         email=doc.email,
         display_name=doc.display_name,
         created_at=doc.created_at,
+        rating=doc.rating,
+        games_played=doc.games_played,
+        calibration_complete=doc.calibration_complete,
     )
 
 
@@ -44,4 +48,8 @@ def document_from_mongo(raw: dict[str, object]) -> UserDocument:
         display_name=str(raw["display_name"]),
         password_hash=str(raw["password_hash"]),
         created_at=raw["created_at"],  # type: ignore[arg-type]
+        # Defaults keep users created before the rating feature readable.
+        rating=int(raw.get("rating", INITIAL_RATING)),  # type: ignore[arg-type]
+        games_played=int(raw.get("games_played", 0)),  # type: ignore[arg-type]
+        calibration_complete=bool(raw.get("calibration_complete", False)),
     )

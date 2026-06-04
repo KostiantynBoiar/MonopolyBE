@@ -36,6 +36,9 @@ class UserPublic(BaseModel):
     email: EmailStr
     display_name: str
     created_at: datetime
+    rating: int
+    games_played: int
+    calibration_complete: bool
 
 
 class TokenResponse(BaseModel):

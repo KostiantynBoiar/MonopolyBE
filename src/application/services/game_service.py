@@ -37,8 +37,10 @@ from domain.game.schemas.commands import (
 )
 from domain.game.schemas.state import GameState
 from domain.game.setup import GameMember, new_game
+from domain.rating.constants import INITIAL_RATING
 from domain.session.schemas import Session
 from infra.mongo.games.repository import GameRepository
+from infra.mongo.users.repository import UserRepository
 from protocol.ws.envelope import make_outbound
 
 _session_locks: dict[str, asyncio.Lock] = {}
@@ -85,15 +87,18 @@ class GameService:
         self,
         games: GameRepository,
         settings: Settings,
+        users: UserRepository | None = None,
     ) -> None:
         self._games = games
         self._settings = settings
+        self._users = users
 
     @classmethod
     def from_db(cls, db: AsyncIOMotorDatabase, settings: Settings | None = None) -> GameService:
         return cls(
             games=GameRepository(db),
             settings=settings or get_settings(),
+            users=UserRepository(db),
         )
 
     async def start_game(self, session: Session) -> GameState:
@@ -105,8 +110,18 @@ class GameService:
         seed = random.randint(0, 2**31 - 1)
         rng = random.Random(seed)
         clock = FixedClock(datetime.now(UTC))
+        # Snapshot each player's current rating into the game so the board can show it.
+        ratings = (
+            await self._users.find_by_ids([m.user_id for m in session.members])
+            if self._users is not None
+            else {}
+        )
         members = [
-            GameMember(user_id=m.user_id, display_name=m.display_name)
+            GameMember(
+                user_id=m.user_id,
+                display_name=m.display_name,
+                rating=ratings[m.user_id].rating if m.user_id in ratings else INITIAL_RATING,
+            )
             for m in session.members
         ]
         state = new_game(

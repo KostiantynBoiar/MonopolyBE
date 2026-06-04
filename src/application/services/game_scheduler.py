@@ -116,13 +116,15 @@ class GameScheduler:
                 session_id, updated.state.model_dump(mode="json")
             )
             if updated.state.status == GameStatus.FINISHED:
-                await self._finish_session(session_id)
+                await self._finish_session(session_id, updated.state)
 
-    async def _finish_session(self, session_id: str) -> None:
+    async def _finish_session(self, session_id: str, state) -> None:
         from application.services.session_service import SessionService
+        from application.services.rating_service import RatingService
         from api.sessions.router import _broadcast_session_updated
 
-        session_service = SessionService.from_db(self._games._collection.database)
-        session = await session_service.mark_finished(session_id)
+        db = self._games._collection.database
+        await RatingService.from_db(db).apply_for_finished_game(session_id, state)
+        session = await SessionService.from_db(db).mark_finished(session_id)
         if session is not None:
             await _broadcast_session_updated(self._backplane, session)

@@ -57,6 +57,8 @@ class SessionService:
             display_name=user.display_name,
             role=MemberRole.HOST,
             joined_at=now,
+            rating=user.rating,
+            calibration_complete=user.calibration_complete,
         )
 
         for _ in range(SESSION_INVITE_CODE_MAX_RETRIES):
@@ -222,6 +224,8 @@ class SessionService:
             display_name=user.display_name,
             role=MemberRole.PLAYER,
             joined_at=datetime.now(UTC),
+            rating=user.rating,
+            calibration_complete=user.calibration_complete,
         )
         updated = await self._sessions.add_member(session.id, member)
         if updated is not None:

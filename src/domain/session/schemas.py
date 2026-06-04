@@ -29,6 +29,9 @@ class SessionMember(BaseModel):
     display_name: str
     role: MemberRole
     joined_at: datetime
+    # Rating snapshot at join (shown in the lobby/waiting room).
+    rating: int = 800
+    calibration_complete: bool = False
 
 
 class Session(BaseModel):

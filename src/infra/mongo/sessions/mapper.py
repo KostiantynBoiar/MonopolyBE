@@ -18,6 +18,8 @@ def to_domain(doc: SessionDocument) -> Session:
                 display_name=m.display_name,
                 role=m.role,
                 joined_at=m.joined_at,
+                rating=m.rating,
+                calibration_complete=m.calibration_complete,
             )
             for m in doc.members
         ),
@@ -64,6 +66,8 @@ def document_from_mongo(raw: dict[str, object]) -> SessionDocument:
             display_name=str(m["display_name"]),
             role=m["role"],  # type: ignore[arg-type]
             joined_at=m["joined_at"],  # type: ignore[arg-type]
+            rating=int(m.get("rating", 800)),
+            calibration_complete=bool(m.get("calibration_complete", False)),
         )
         for m in members_raw  # type: ignore[union-attr]
     ]

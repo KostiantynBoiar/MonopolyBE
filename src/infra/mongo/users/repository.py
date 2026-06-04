@@ -40,3 +40,34 @@ class UserRepository:
         except DuplicateKeyError as exc:
             raise DuplicateEmailError("Email already registered") from exc
         return to_domain(doc)
+
+    async def find_by_ids(self, user_ids: list[str]) -> dict[str, User]:
+        if not user_ids:
+            return {}
+        users: dict[str, User] = {}
+        async for raw in self._collection.find({"_id": {"$in": user_ids}}):
+            user = to_domain(document_from_mongo(raw))
+            users[user.id] = user
+        return users
+
+    async def update_rating(
+        self, user_id: str, *, rating: int, games_played: int, calibration_complete: bool
+    ) -> None:
+        await self._collection.update_one(
+            {"_id": user_id},
+            {"$set": {
+                "rating": rating,
+                "games_played": games_played,
+                "calibration_complete": calibration_complete,
+            }},
+        )
+
+    async def top_by_rating(self, *, limit: int, offset: int) -> list[User]:
+        # Only players who have actually played a game appear on the leaderboard.
+        cursor = (
+            self._collection.find({"games_played": {"$gte": 1}})
+            .sort([("rating", -1), ("games_played", -1)])
+            .skip(offset)
+            .limit(limit)
+        )
+        return [to_domain(document_from_mongo(raw)) async for raw in cursor]

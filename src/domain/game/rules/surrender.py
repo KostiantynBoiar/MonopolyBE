@@ -60,6 +60,7 @@ def resolve_surrender(state: GameState, player_id: str) -> GameState:
             "get_out_of_jail_cards": 0,
             "jail_status": None,
             "is_bankrupt": True,
+            "eliminated_at": state.turn.turn_number,
         }
     )
 

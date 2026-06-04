@@ -29,6 +29,8 @@ class SessionMemberResponse(BaseModel):
     display_name: str
     role: MemberRole
     joined_at: datetime
+    rating: int = 800
+    calibration_complete: bool = False
 
 
 class SessionSummary(BaseModel):

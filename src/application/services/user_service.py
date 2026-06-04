@@ -23,6 +23,7 @@ from protocol.rest.auth import (
     TokenResponse,
     UserPublic,
 )
+from protocol.rest.leaderboard import LeaderboardEntry, LeaderboardResponse
 
 
 def _to_public(user: User) -> UserPublic:
@@ -31,6 +32,9 @@ def _to_public(user: User) -> UserPublic:
         email=user.email,
         display_name=user.display_name,
         created_at=user.created_at,
+        rating=user.rating,
+        games_played=user.games_played,
+        calibration_complete=user.calibration_complete,
     )
 
 
@@ -48,6 +52,22 @@ class UserService:
     @classmethod
     def from_db(cls, db: AsyncIOMotorDatabase, settings: Settings) -> Self:
         return cls(UserRepository(db), settings, RefreshTokenRepository(db))
+
+    async def leaderboard(self, *, limit: int, offset: int) -> LeaderboardResponse:
+        users = await self._repository.top_by_rating(limit=limit, offset=offset)
+        return LeaderboardResponse(
+            items=[
+                LeaderboardEntry(
+                    rank=offset + i + 1,
+                    user_id=user.id,
+                    display_name=user.display_name,
+                    rating=user.rating,
+                    games_played=user.games_played,
+                    calibration_complete=user.calibration_complete,
+                )
+                for i, user in enumerate(users)
+            ]
+        )
 
     async def register(self, data: RegisterRequest) -> AuthResponse:
         password_hash = hash_password(data.password)

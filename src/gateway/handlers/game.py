@@ -107,16 +107,18 @@ async def _apply_and_publish(
     await backplane.publish_game_state(conn.session_id, state.model_dump(mode="json"), timeline)
 
     if state.status == GameStatus.FINISHED:
-        await _finish_session(conn, backplane)
+        await _finish_session(conn, backplane, state)
 
 
-async def _finish_session(conn: Connection, backplane: Backplane) -> None:
-    """Flip the session to finished and broadcast session.updated so the lobby reflects it."""
+async def _finish_session(conn: Connection, backplane: Backplane, state) -> None:
+    """Apply ratings, flip the session to finished, and broadcast session.updated."""
     from application.services.session_service import SessionService
+    from application.services.rating_service import RatingService
     from api.sessions.router import _broadcast_session_updated  # local import avoids cycle
 
-    session_service = SessionService.from_db(conn.websocket.app.state.mongo.db)
-    session = await session_service.mark_finished(conn.session_id)
+    db = conn.websocket.app.state.mongo.db
+    await RatingService.from_db(db).apply_for_finished_game(conn.session_id, state)
+    session = await SessionService.from_db(db).mark_finished(conn.session_id)
     if session is not None:
         await _broadcast_session_updated(backplane, session)
 
