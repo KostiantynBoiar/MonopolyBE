@@ -98,7 +98,6 @@ class CardDef(BaseModel):
 
     id: str
     kind: CardKind
-    text: str
     effect: CardEffect
 
 
@@ -107,6 +106,5 @@ class ActiveCard(BaseModel):
 
     id: str
     kind: CardKind
-    text: str
     effect: CardEffect
     drawer_id: str

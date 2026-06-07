@@ -161,7 +161,7 @@ def apply_card_effect(
             SentToJail(
                 player_id=player.id,
                 player_name=player.display_name,
-                reason="Chance/Community Chest card",
+                reason="card",
             )
         )
         return state, events, True
@@ -270,7 +270,6 @@ def draw_and_apply(
     active = ActiveCard(
         id=card.id,
         kind=card.kind,
-        text=card.text,
         effect=card.effect,
         drawer_id=player.id,
     )
@@ -278,7 +277,6 @@ def draw_and_apply(
         player_id=player.id,
         player_name=player.display_name,
         card_id=card.id,
-        card_text=card.text,
         kind=card.kind.value,
     )]
     state, effect_events, sent_to_jail = apply_card_effect(

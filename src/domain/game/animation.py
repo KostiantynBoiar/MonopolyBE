@@ -112,7 +112,6 @@ def build_timeline(
             card = ActiveCard(
                 id=card_def.id,
                 kind=card_def.kind,
-                text=card_def.text,
                 effect=card_def.effect,
                 drawer_id=event.player_id,
             )

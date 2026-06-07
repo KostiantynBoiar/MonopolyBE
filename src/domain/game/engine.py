@@ -266,7 +266,7 @@ def _handle_roll_dice(
             SentToJail(
                 player_id=player.id,
                 player_name=player.display_name,
-                reason="three doubles in a row",
+                reason="doubles",
             )
         )
         new_turn = state.turn.model_copy(

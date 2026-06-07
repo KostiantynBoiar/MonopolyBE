@@ -52,7 +52,6 @@ def _seed_active_card(client, setup) -> str:
                 "active_card": ActiveCard(
                     id=_CARD.id,
                     kind=_CARD.kind,
-                    text=_CARD.text,
                     effect=_CARD.effect,
                     drawer_id=cur,
                 )
