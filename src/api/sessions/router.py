@@ -47,6 +47,7 @@ def _to_summary(session: Session) -> SessionSummary:
         invite_code=session.invite_code,
         status=session.status,
         visibility=session.visibility,
+        ranked=session.ranked,
         member_count=session.member_count(),
         host=HostSummary(id=host_member.user_id, display_name=host_member.display_name),
         created_at=session.created_at,
@@ -79,7 +80,7 @@ async def create_session(
     user_id: Annotated[str, Depends(get_current_user_id)],
     service: Annotated[SessionService, Depends(get_session_service)],
 ) -> SessionCreateResponse:
-    session = await service.create(user_id, visibility=body.visibility)
+    session = await service.create(user_id, visibility=body.visibility, ranked=body.ranked)
     return SessionCreateResponse(session=_to_detail(session, user_id))
 
 

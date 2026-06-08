@@ -46,6 +46,7 @@ class SessionService:
         self,
         user_id: str,
         visibility: SessionVisibility = SessionVisibility.PUBLIC,
+        ranked: bool = True,
     ) -> Session:
         user = await self._users.find_by_id(user_id)
         if user is None:
@@ -67,6 +68,7 @@ class SessionService:
                 host_user_id=user.id,
                 status=SessionStatus.WAITING,
                 visibility=visibility,
+                ranked=ranked,
                 members=[host_member],
             )
             try:

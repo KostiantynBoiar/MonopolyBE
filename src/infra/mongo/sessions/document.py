@@ -24,6 +24,7 @@ class SessionDocument(BaseModel):
     host_user_id: str
     status: SessionStatus
     visibility: SessionVisibility
+    ranked: bool = True
     members: list[SessionMemberDocument]
     created_at: datetime
     updated_at: datetime

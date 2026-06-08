@@ -42,6 +42,7 @@ class Session(BaseModel):
     host_user_id: str
     status: SessionStatus
     visibility: SessionVisibility
+    ranked: bool = True
     members: tuple[SessionMember, ...]
     created_at: datetime
     updated_at: datetime
