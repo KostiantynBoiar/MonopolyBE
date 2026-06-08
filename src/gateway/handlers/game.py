@@ -111,15 +111,16 @@ async def _apply_and_publish(
 
 
 async def _finish_session(conn: Connection, backplane: Backplane, state) -> None:
-    """Apply ratings, flip the session to finished, and broadcast session.updated."""
+    """Flip the session to finished, apply ratings if ranked, and broadcast session.updated."""
     from application.services.session_service import SessionService
     from application.services.rating_service import RatingService
     from api.sessions.router import _broadcast_session_updated  # local import avoids cycle
 
     db = conn.websocket.app.state.mongo.db
-    await RatingService.from_db(db).apply_for_finished_game(conn.session_id, state)
     session = await SessionService.from_db(db).mark_finished(conn.session_id)
     if session is not None:
+        if session.ranked:
+            await RatingService.from_db(db).apply_for_finished_game(conn.session_id, state)
         await _broadcast_session_updated(backplane, session)
 
 

@@ -12,6 +12,7 @@ def to_domain(doc: SessionDocument) -> Session:
         host_user_id=doc.host_user_id,
         status=doc.status,
         visibility=doc.visibility,
+        ranked=doc.ranked,
         members=tuple(
             SessionMember(
                 user_id=m.user_id,
@@ -34,6 +35,7 @@ def to_document(
     host_user_id: str,
     status: SessionStatus,
     visibility: SessionVisibility,
+    ranked: bool = True,
     members: list[SessionMemberDocument],
     session_id: str | None = None,
     created_at: datetime | None = None,
@@ -46,6 +48,7 @@ def to_document(
         host_user_id=host_user_id,
         status=status,
         visibility=visibility,
+        ranked=ranked,
         members=members,
         created_at=created_at or now,
         updated_at=updated_at or now,
@@ -77,6 +80,7 @@ def document_from_mongo(raw: dict[str, object]) -> SessionDocument:
         host_user_id=str(raw["host_user_id"]),
         status=raw["status"],  # type: ignore[arg-type]
         visibility=raw["visibility"],  # type: ignore[arg-type]
+        ranked=bool(raw.get("ranked", True)),
         members=members,
         created_at=raw["created_at"],  # type: ignore[arg-type]
         updated_at=raw["updated_at"],  # type: ignore[arg-type]

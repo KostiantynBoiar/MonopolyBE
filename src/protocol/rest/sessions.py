@@ -11,6 +11,7 @@ class CreateSessionRequest(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
 
     visibility: SessionVisibility = SessionVisibility.PUBLIC
+    ranked: bool = True
 
 
 class JoinByCodeRequest(BaseModel):
@@ -38,6 +39,7 @@ class SessionSummary(BaseModel):
     invite_code: str
     status: SessionStatus
     visibility: SessionVisibility
+    ranked: bool = True
     member_count: int
     max_players: int = MAX_SESSION_MEMBERS
     host: HostSummary
