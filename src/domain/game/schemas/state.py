@@ -97,11 +97,27 @@ class LogEntry(BaseModel):
 
     id: str
     kind: LogKind
-    text: str
     ts: datetime
-    player_id: str | None = None
-    player_name: str | None = None
+    # Event discriminator (e.g. "player_moved", "rent_paid"); None for chat/sticker entries.
+    # The frontend selects a localized template by this and fills it from the structured fields
+    # below — the backend no longer ships pre-rendered English prose for events.
+    type: str | None = None
+    player_id: str | None = None  # acting player
+    player_name: str | None = None  # optional fallback; FE should prefer resolving from player_id
     player_token: TokenColor | None = None
+    opponent_id: str | None = None  # the other party (rent owner, etc.)
+    tile_id: int | None = None  # board square the entry concerns (move dest / property / tax)
+    rolled: int | None = None  # dice total (omitted for non-dice moves)
+    spent: int | None = None  # money out
+    received: int | None = None  # money in
+    card_id: str | None = None
+    card_kind: str | None = None  # "chance" | "community_chest"
+    reason: str | None = None  # enum code (jail / surrender)
+    streak: int | None = None
+    strikes: int | None = None
+    # Retained for the reserved chat/sticker log kinds and for back-compat with already-persisted
+    # games. None for events (the FE localizes those via `type`).
+    text: str | None = None
     sticker_url: str | None = None
 
 

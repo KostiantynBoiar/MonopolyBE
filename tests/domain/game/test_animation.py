@@ -59,7 +59,6 @@ def test_card_show_wait_then_card_move(two_player_game: GameState) -> None:
             player_id=p1.id,
             player_name=p1.display_name,
             card_id=card.id,
-            card_text=card.text,
             kind="chance",
         ),
         _moved(p1, 7, 39, reason="card"),  # card displacement
@@ -87,7 +86,7 @@ def test_jail_suppresses_move(two_player_game: GameState) -> None:
     )
     events = [
         _moved(p1, 22, 30),  # walked onto Go-To-Jail corner...
-        SentToJail(player_id=p1.id, player_name=p1.display_name, reason="landed on Go to Jail"),
+        SentToJail(player_id=p1.id, player_name=p1.display_name, reason="go_to_jail_space"),
     ]
     timeline = build_timeline(RollDice(player_id=p1.id), state, events)
 

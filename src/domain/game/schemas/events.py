@@ -77,7 +77,7 @@ class SentToJail(BaseModel):
 
     player_id: str
     player_name: str
-    reason: str
+    reason: Literal["doubles", "go_to_jail_space", "card"]
 
 
 class TaxPaid(BaseModel):
@@ -86,7 +86,6 @@ class TaxPaid(BaseModel):
     player_id: str
     player_name: str
     position: int
-    tax_name: str
     amount: int
 
 
@@ -105,7 +104,6 @@ class CardDrawn(BaseModel):
     player_id: str
     player_name: str
     card_id: str
-    card_text: str
     kind: str
 
 
@@ -142,118 +140,135 @@ GameEvent = (
 
 
 def event_to_log_entry(event: GameEvent, ts: datetime) -> LogEntry:
+    """Map a typed game event to a structured, language-agnostic LogEntry. The frontend renders a
+    localized string from `type` + the populated fields; the backend ships no English prose here."""
     entry_id = uuid4().hex
     match event:
         case PlayerMoved() as e:
             return LogEntry(
                 id=entry_id,
                 kind=LogKind.EVENT,
+                type="player_moved",
                 player_id=e.player_id,
                 player_name=e.player_name,
                 player_token=e.player_token,
-                text=f"rolled {e.dice_total} and moved to position {e.to_position}",
+                tile_id=e.to_position,
+                # Card/teleport/jail moves aren't dice-driven (dice_total == 0); omit `rolled` so the
+                # FE picks a "moved to X" template instead of "rolled 0 and moved".
+                rolled=e.dice_total if e.reason == "dice" else None,
                 ts=ts,
             )
         case PassedGo() as e:
             return LogEntry(
                 id=entry_id,
                 kind=LogKind.EVENT,
+                type="passed_go",
                 player_id=e.player_id,
                 player_name=e.player_name,
-                text=f"passed GO and collected ${e.amount}",
+                received=e.amount,
                 ts=ts,
             )
         case RentPaid() as e:
             return LogEntry(
                 id=entry_id,
                 kind=LogKind.EVENT,
+                type="rent_paid",
                 player_id=e.payer_id,
                 player_name=e.payer_name,
-                text=(
-                    f"paid ${e.amount} rent on {e.property_name} "
-                    f"to {e.owner_name}"
-                ),
+                opponent_id=e.owner_id,
+                tile_id=e.position,
+                spent=e.amount,
                 ts=ts,
             )
         case PropertyBought() as e:
             return LogEntry(
                 id=entry_id,
                 kind=LogKind.EVENT,
+                type="property_bought",
                 player_id=e.player_id,
                 player_name=e.player_name,
-                text=f"bought {e.property_name} for ${e.price}",
+                tile_id=e.position,
+                spent=e.price,
                 ts=ts,
             )
         case BuyDeclined() as e:
             return LogEntry(
                 id=entry_id,
                 kind=LogKind.EVENT,
+                type="buy_declined",
                 player_id=e.player_id,
                 player_name=e.player_name,
-                text=f"declined to buy {e.property_name}",
+                tile_id=e.position,
                 ts=ts,
             )
         case RolledDoubles() as e:
             return LogEntry(
                 id=entry_id,
                 kind=LogKind.EVENT,
+                type="rolled_doubles",
                 player_id=e.player_id,
                 player_name=e.player_name,
-                text=f"rolled doubles ({e.streak} in a row)",
+                streak=e.streak,
                 ts=ts,
             )
         case SentToJail() as e:
             return LogEntry(
                 id=entry_id,
                 kind=LogKind.EVENT,
+                type="sent_to_jail",
                 player_id=e.player_id,
                 player_name=e.player_name,
-                text=f"was sent to jail ({e.reason})",
+                reason=e.reason,
                 ts=ts,
             )
         case TaxPaid() as e:
             return LogEntry(
                 id=entry_id,
                 kind=LogKind.EVENT,
+                type="tax_paid",
                 player_id=e.player_id,
                 player_name=e.player_name,
-                text=f"paid ${e.amount} {e.tax_name}",
+                tile_id=e.position,
+                spent=e.amount,
                 ts=ts,
             )
         case TurnEnded() as e:
             return LogEntry(
                 id=entry_id,
                 kind=LogKind.EVENT,
+                type="turn_ended",
                 player_id=e.next_player_id,
                 player_name=e.next_player_name,
-                text=f"it is now {e.next_player_name}'s turn",
                 ts=ts,
             )
         case CardDrawn() as e:
             return LogEntry(
                 id=entry_id,
                 kind=LogKind.EVENT,
+                type="card_drawn",
                 player_id=e.player_id,
                 player_name=e.player_name,
-                text=f"drew card: {e.card_text}",
+                card_id=e.card_id,
+                card_kind=e.kind,
                 ts=ts,
             )
         case PlayerSurrendered() as e:
-            reason = "ran out of time and surrendered" if e.reason == "afk" else "surrendered"
             return LogEntry(
                 id=entry_id,
                 kind=LogKind.EVENT,
+                type="player_surrendered",
                 player_id=e.player_id,
                 player_name=e.player_name,
-                text=reason,
+                reason=e.reason,
                 ts=ts,
             )
         case TurnTimedOut() as e:
             return LogEntry(
                 id=entry_id,
                 kind=LogKind.EVENT,
+                type="turn_timed_out",
                 player_id=e.player_id,
                 player_name=e.player_name,
-                text=f"ran out of time (strike {e.strikes})",
+                strikes=e.strikes,
                 ts=ts,
             )

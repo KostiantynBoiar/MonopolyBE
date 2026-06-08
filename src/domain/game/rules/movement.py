@@ -69,7 +69,7 @@ def resolve_landing(
             SentToJail(
                 player_id=player.id,
                 player_name=player.display_name,
-                reason="landed on Go to Jail",
+                reason="go_to_jail_space",
             )
         )
         turn = turn.model_copy(update={"pending_buy_position": None, "phase": phase})
@@ -90,7 +90,6 @@ def resolve_landing(
                 player_id=player.id,
                 player_name=player.display_name,
                 position=player.position,
-                tax_name=board_space.name,
                 amount=board_space.tax_amount,
             )
         )

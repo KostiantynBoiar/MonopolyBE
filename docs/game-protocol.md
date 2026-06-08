@@ -145,8 +145,9 @@ Compute the live countdown as `max(0, time_remaining_ms - (now_ms - started_at_m
 Only `target_id` may respond — gate your "respond" UI on `trade.target_id === viewer_id`.
 
 ### ActiveCard (non-null briefly after drawing Chance/Community Chest)
-`id`, `kind` (`chance` | `community_chest`), `text`, `drawer_id`, and `effect` — a discriminated union
-on `type`:
+`id`, `kind` (`chance` | `community_chest`), `drawer_id`, and `effect`. The card has **no `text`** — the
+frontend renders localized card copy from `id` (e.g. `chance_06`) via its own i18n catalogue. `effect`
+is a discriminated union on `type`:
 - `{ "type":"advance_to", "position", "collect_go_bonus" }`
 - `{ "type":"advance_to_nearest", "space_type":"railroad"|"utility", "pay_double" }`
 - `{ "type":"go_to_jail" }`
@@ -165,7 +166,31 @@ cash (sell/mortgage) until they can pay, or send `game.declare_bankruptcy`.
 
 ### LogEntry
 `id`, `kind` (`event` for game events; `chat`/`sticker` are merged from the chat channel client-side),
-`text`, `ts`, plus optional `player_id`, `player_name`, `player_token`, `sticker_url`.
+and `ts`. **Game events carry structured identifiers, not prose** — the frontend builds a localized,
+readable line by selecting a template from `type` and filling it from the populated fields. `text` is
+**no longer set for events** (it remains only for chat/sticker entries and for back-compat with games
+persisted before this change — render via `type` when present, else fall back to `text`).
+
+`type` values and the fields each populates (all fields optional; absent = not applicable):
+
+| `type` | fields |
+|--------|--------|
+| `player_moved` | `player_id`, `player_token`, `tile_id` (destination), `rolled` (dice total; omitted for card/teleport/jail moves) |
+| `passed_go` | `player_id`, `received` |
+| `rent_paid` | `player_id` (payer), `opponent_id` (owner), `tile_id`, `spent` |
+| `property_bought` | `player_id`, `tile_id`, `spent` |
+| `buy_declined` | `player_id`, `tile_id` |
+| `rolled_doubles` | `player_id`, `streak` |
+| `sent_to_jail` | `player_id`, `reason` (`doubles` \| `go_to_jail_space` \| `card`) |
+| `tax_paid` | `player_id`, `tile_id`, `spent` (tax label derivable from the square) |
+| `turn_ended` | `player_id` (whose turn it now is) |
+| `card_drawn` | `player_id`, `card_id`, `card_kind` (`chance` \| `community_chest`) |
+| `player_surrendered` | `player_id`, `reason` (`voluntary` \| `afk`) |
+| `turn_timed_out` | `player_id`, `strikes` |
+
+Common optional fields: `player_id`, `player_name` (fallback; prefer resolving from `player_id`),
+`player_token`, `opponent_id`, `tile_id`, `rolled`, `spent`, `received`, `card_id`, `card_kind`,
+`reason`, `streak`, `strikes`, `text`, `sticker_url`.
 
 ---
 
