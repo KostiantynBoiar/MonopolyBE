@@ -46,6 +46,10 @@ from protocol.ws.schemas import (
     UseJailCardPayload,
 )
 
+if TYPE_CHECKING:
+    from gateway.backplane import Backplane
+    from gateway.connection import Connection
+
 _roll_adapter: TypeAdapter[RollDicePayload] = TypeAdapter(RollDicePayload)
 _buy_adapter: TypeAdapter[BuyPropertyPayload] = TypeAdapter(BuyPropertyPayload)
 _pass_buy_adapter: TypeAdapter[PassBuyPayload] = TypeAdapter(PassBuyPayload)
