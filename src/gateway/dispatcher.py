@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 
+from gateway.backplane import Backplane
+from gateway.connection import Connection
 import structlog
 from pydantic import ValidationError
 

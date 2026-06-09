@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from uuid import uuid4
 
 from domain.game.board_data import get_board_space
-from domain.game.constants import TRADE_DURATION_MS
+from domain.game.constants import MAX_TRADE_OFFERS_PER_TURN, TRADE_DURATION_MS
 from domain.game.enums import TradeResponse, TradeStatus, TurnPhase
 from domain.game.exceptions import IllegalMove
 from domain.game.schemas.state import GameState, PlayerState, SpaceOwnership, TradeOffer, TradeState
@@ -44,6 +44,8 @@ def propose_trade(
         raise IllegalMove("cannot trade with yourself")
     if state.trade is not None:
         raise IllegalMove("a trade is already in progress")
+    if state.turn.trade_offers_made >= MAX_TRADE_OFFERS_PER_TURN:
+        raise IllegalMove("trade offer limit reached for this turn")
     get_player_by_id_from_state(state, target_id)
     validate_trade_offer(state, proposer_id, proposer_offer)
     validate_trade_offer(state, target_id, target_request)
@@ -57,7 +59,12 @@ def propose_trade(
         status=TradeStatus.PENDING,
         expires_at=clock_now + timedelta(milliseconds=TRADE_DURATION_MS),
     )
-    turn = state.turn.model_copy(update={"phase": TurnPhase.TRADE_NEGOTIATION})
+    turn = state.turn.model_copy(
+        update={
+            "phase": TurnPhase.TRADE_NEGOTIATION,
+            "trade_offers_made": state.turn.trade_offers_made + 1,
+        }
+    )
     return state.model_copy(update={"trade": trade, "turn": turn})
 
 

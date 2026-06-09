@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from domain.game.constants import JAIL_FINE
+from domain.game.constants import JAIL_FINE, MAX_TRADE_OFFERS_PER_TURN
 from domain.game.enums import TurnPhase
 from domain.game.schemas.state import ActionSet, GameState
 from domain.game.rules.building import (
@@ -50,7 +50,11 @@ def compute_actions(state: GameState, player_id: str | None = None) -> ActionSet
             can_build=can_build,
             can_mortgage=has_any_mortgageable(state, pid),
             can_unmortgage=has_any_unmortgageable(state, pid),
-            can_trade=state.trade is None and state.status.value == "in_progress",
+            can_trade=(
+                state.trade is None
+                and state.status.value == "in_progress"
+                and state.turn.trade_offers_made < MAX_TRADE_OFFERS_PER_TURN
+            ),
             can_surrender=True,
         )
 
@@ -62,7 +66,10 @@ def compute_actions(state: GameState, player_id: str | None = None) -> ActionSet
             can_build=has_any_buildable(state, pid),
             can_mortgage=has_any_mortgageable(state, pid),
             can_unmortgage=has_any_unmortgageable(state, pid),
-            can_trade=state.trade is None,
+            can_trade=(
+                state.trade is None
+                and state.turn.trade_offers_made < MAX_TRADE_OFFERS_PER_TURN
+            ),
             can_end_turn=pending is None,
             can_surrender=True,
         )

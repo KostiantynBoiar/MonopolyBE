@@ -48,7 +48,12 @@ def _to_summary(session: Session) -> SessionSummary:
         status=session.status,
         visibility=session.visibility,
         member_count=session.member_count(),
-        host=HostSummary(id=host_member.user_id, display_name=host_member.display_name),
+        host=HostSummary(
+            id=host_member.user_id,
+            display_name=host_member.display_name,
+            rating=host_member.rating,
+            calibration_complete=host_member.calibration_complete,
+        ),
         created_at=session.created_at,
     )
 

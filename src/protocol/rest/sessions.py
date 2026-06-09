@@ -22,6 +22,8 @@ class JoinByCodeRequest(BaseModel):
 class HostSummary(BaseModel):
     id: str
     display_name: str
+    rating: int = 800
+    calibration_complete: bool = False
 
 
 class SessionMemberResponse(BaseModel):
