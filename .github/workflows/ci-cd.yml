@@ -1,0 +1,140 @@
+name: CI/CD
+
+# Test + coverage + linters on every push/PR; deploy to the VPS on push to main
+# (or manual dispatch). Quality gates (ruff/mypy/coverage) are report-only for now;
+# the test step is the hard gate that blocks deploy.
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-cd-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test, coverage & lint
+    runs-on: ubuntu-latest
+
+    services:
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand(\"ping\").ok'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Lint (ruff)
+        continue-on-error: true
+        run: ruff check src tests
+
+      - name: Format check (ruff)
+        continue-on-error: true
+        run: ruff format --check src tests
+
+      - name: Type check (mypy)
+        continue-on-error: true
+        run: mypy src
+
+      - name: Tests + coverage
+        env:
+          APP_ENV: test
+          MONGODB_URI: mongodb://localhost:27017
+          MONGODB_DB: monopoly_test
+          REDIS_URL: redis://localhost:6379/0
+          JWT_SECRET_KEY: test-secret-key
+          CORS_ORIGINS: http://localhost:3000
+        run: |
+          pytest -m "not e2e" \
+            --cov=src \
+            --cov-report=term-missing \
+            --cov-report=xml \
+            --junitxml=pytest-report.xml
+
+      - name: Coverage summary
+        if: always()
+        run: |
+          if [ -f coverage.xml ]; then
+            line_rate=$(grep -m1 -oE 'line-rate="[0-9.]+"' coverage.xml | head -1 | grep -oE '[0-9.]+')
+            pct=$(python -c "print(f'{float('${line_rate:-0}') * 100:.1f}%')")
+            echo "### Test coverage: $pct" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            coverage.xml
+            pytest-report.xml
+          if-no-files-found: ignore
+
+  deploy:
+    name: Deploy to VPS
+    needs: test
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main')
+
+    steps:
+      - name: Deploy over SSH (git pull + docker compose up --build)
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          password: ${{ secrets.VPS_SSH_PASSWORD }}
+          port: ${{ vars.VPS_SSH_PORT || 22 }}
+          script_stop: true
+          envs: DEPLOY_PATH
+          script: |
+            DEPLOY_PATH="${{ vars.VPS_DEPLOY_PATH }}"
+            cd "$DEPLOY_PATH"
+            git fetch origin main
+            git reset --hard origin/main   # .env is gitignored, so it survives the reset
+            cd deploy
+            docker compose up -d --build
+            docker image prune -f
+            # Smoke test using the same healthcheck the container uses (no public-domain dependency)
+            for i in $(seq 1 30); do
+              if docker compose exec -T api python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').status==200 else 1)"; then
+                echo "API healthy"
+                exit 0
+              fi
+              sleep 3
+            done
+            echo "API did not become healthy"
+            docker compose ps
+            docker compose logs --tail=50 api
+            exit 1
