@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from pydantic import TypeAdapter
 
 from application.services.game_service import GameService
@@ -43,6 +45,10 @@ from protocol.ws.schemas import (
     UnmortgagePayload,
     UseJailCardPayload,
 )
+
+if TYPE_CHECKING:
+    from gateway.backplane import Backplane
+    from gateway.connection import Connection
 
 _roll_adapter: TypeAdapter[RollDicePayload] = TypeAdapter(RollDicePayload)
 _buy_adapter: TypeAdapter[BuyPropertyPayload] = TypeAdapter(BuyPropertyPayload)

@@ -4,11 +4,14 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from domain.game.constants import MAX_TRADE_OFFERS_PER_TURN
 from domain.game.enums import TradeResponse, TradeStatus, TurnPhase
 from domain.game.exceptions import IllegalMove
 from domain.game.rng import FixedClock
+from domain.game.rules.actions import compute_actions
+from domain.game.rules.bankruptcy import advance_turn_off_player
 from domain.game.rules.trade import expire_trade, propose_trade, respond_trade
-from domain.game.schemas.commands import BuildHouse, ProposeTrade, RespondTrade
+from domain.game.schemas.commands import BuildHouse, EndTurn, ProposeTrade, RespondTrade
 from domain.game.schemas.state import TradeOffer, TradeState
 from tests.domain.game.conftest import apply_cmd, monopoly_brown, with_phase
 
@@ -189,3 +192,86 @@ def test_respond_trade_via_engine(two_player_game: GameState, clock: FixedClock)
         clock,
     )
     assert rejected.trade is None
+
+
+def test_fourth_trade_offer_rejected(two_player_game: GameState, clock: FixedClock) -> None:
+    p1, p2 = two_player_game.players
+    state = with_phase(two_player_game, TurnPhase.POST_ROLL, current_player_id=p1.id)
+
+    # Propose and reject up to the per-turn cap; each proposal consumes one allowance.
+    for _ in range(MAX_TRADE_OFFERS_PER_TURN):
+        state = propose_trade(state, p1.id, p2.id, TradeOffer(), TradeOffer(), clock.now())
+        trade_id = state.trade.id  # type: ignore[union-attr]
+        state = respond_trade(state, p2.id, trade_id, TradeResponse.REJECT, None, clock.now())
+
+    assert state.turn.trade_offers_made == MAX_TRADE_OFFERS_PER_TURN
+    with pytest.raises(IllegalMove, match="limit reached"):
+        propose_trade(state, p1.id, p2.id, TradeOffer(), TradeOffer(), clock.now())
+
+
+def test_trade_counter_resets_next_turn(two_player_game: GameState, clock: FixedClock) -> None:
+    p1, p2 = two_player_game.players
+    state = with_phase(two_player_game, TurnPhase.POST_ROLL, current_player_id=p1.id)
+
+    state = propose_trade(state, p1.id, p2.id, TradeOffer(), TradeOffer(), clock.now())
+    trade_id = state.trade.id  # type: ignore[union-attr]
+    state = respond_trade(state, p2.id, trade_id, TradeResponse.REJECT, None, clock.now())
+    assert state.turn.trade_offers_made == 1
+
+    ended, _ = apply_cmd(state, EndTurn(player_id=p1.id), clock)
+    assert ended.turn.current_player_id == p2.id
+    assert ended.turn.turn_number == state.turn.turn_number + 1
+    assert ended.turn.trade_offers_made == 0
+
+
+def test_counter_offer_does_not_consume_allowance(
+    two_player_game: GameState, clock: FixedClock
+) -> None:
+    p1, p2 = two_player_game.players
+    state = with_phase(two_player_game, TurnPhase.POST_ROLL, current_player_id=p1.id)
+
+    state = propose_trade(state, p1.id, p2.id, TradeOffer(money=50), TradeOffer(), clock.now())
+    assert state.turn.trade_offers_made == 1
+
+    trade_id = state.trade.id  # type: ignore[union-attr]
+    countered = respond_trade(
+        state, p2.id, trade_id, TradeResponse.COUNTER, TradeOffer(money=100), clock.now()
+    )
+    # The target's counter is a response, not a new proposal, so the proposer's
+    # per-turn allowance is unchanged.
+    assert countered.turn.trade_offers_made == 1
+
+
+def test_can_trade_false_at_limit(two_player_game: GameState, clock: FixedClock) -> None:
+    p1, _ = two_player_game.players
+    below = with_phase(
+        two_player_game,
+        TurnPhase.POST_ROLL,
+        current_player_id=p1.id,
+        trade_offers_made=MAX_TRADE_OFFERS_PER_TURN - 1,
+    )
+    assert compute_actions(below, p1.id).can_trade is True
+
+    at_limit = with_phase(
+        two_player_game,
+        TurnPhase.POST_ROLL,
+        current_player_id=p1.id,
+        trade_offers_made=MAX_TRADE_OFFERS_PER_TURN,
+    )
+    assert compute_actions(at_limit, p1.id).can_trade is False
+
+
+def test_advancing_turn_off_player_resets_trade_counter(
+    two_player_game: GameState, clock: FixedClock
+) -> None:
+    p1, p2 = two_player_game.players
+    state = with_phase(
+        two_player_game,
+        TurnPhase.POST_ROLL,
+        current_player_id=p1.id,
+        trade_offers_made=2,
+    )
+    # Shared turn-advance path used by turn-timeout and elimination.
+    advanced = advance_turn_off_player(state, p1.id)
+    assert advanced.turn.current_player_id == p2.id
+    assert advanced.turn.trade_offers_made == 0
