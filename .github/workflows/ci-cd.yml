@@ -126,12 +126,15 @@ jobs:
             cd deploy
             docker compose up -d --build
             docker image prune -f
-            # Smoke test using the same healthcheck the container uses (no public-domain dependency)
+            # Smoke test using the same healthcheck the container uses (no public-domain dependency).
+            # stderr is silenced so the first attempts (API still booting) don't dump a traceback.
+            echo "Waiting for API to become healthy..."
             for i in $(seq 1 30); do
-              if docker compose exec -T api python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').status==200 else 1)"; then
+              if docker compose exec -T api python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').status==200 else 1)" 2>/dev/null; then
                 echo "API healthy"
                 exit 0
               fi
+              echo "  attempt $i/30 — not ready yet, retrying in 3s"
               sleep 3
             done
             echo "API did not become healthy"
