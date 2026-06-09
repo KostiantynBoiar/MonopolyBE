@@ -104,6 +104,7 @@ jobs:
     name: Deploy to VPS
     needs: test
     runs-on: ubuntu-latest
+    environment: prod
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'push' && github.ref == 'refs/heads/main')
@@ -113,13 +114,12 @@ jobs:
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
+          username: ${{ secrets.VPS_USER || 'root' }}
           password: ${{ secrets.VPS_SSH_PASSWORD }}
-          port: ${{ vars.VPS_SSH_PORT || 22 }}
+          port: ${{ secrets.VPS_SSH_PORT || 22 }}
           script_stop: true
-          envs: DEPLOY_PATH
           script: |
-            DEPLOY_PATH="${{ vars.VPS_DEPLOY_PATH }}"
+            DEPLOY_PATH="${{ secrets.VPS_DEPLOY_PATH }}"
             cd "$DEPLOY_PATH"
             git fetch origin main
             git reset --hard origin/main   # .env is gitignored, so it survives the reset
