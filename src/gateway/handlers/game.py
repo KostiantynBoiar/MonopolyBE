@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from pydantic import TypeAdapter
 
 from application.services.game_service import GameService

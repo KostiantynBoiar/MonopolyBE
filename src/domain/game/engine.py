@@ -572,6 +572,7 @@ def _handle_end_turn(
             "round_number": round_number,
             "dice_roll": None,
             "doubles_streak": 0,
+            "trade_offers_made": 0,
             "pending_buy_position": None,
         }
     )

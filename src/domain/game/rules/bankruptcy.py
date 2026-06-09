@@ -121,6 +121,7 @@ def advance_turn_off_player(state: GameState, eliminated_id: str) -> GameState:
             "round_number": state.turn.round_number + (1 if wrapped else 0),
             "dice_roll": None,
             "doubles_streak": 0,
+            "trade_offers_made": 0,
             "pending_buy_position": None,
         }
     )

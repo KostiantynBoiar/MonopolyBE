@@ -85,6 +85,9 @@ class TurnState(BaseModel):
     round_number: int = 1
     dice_roll: DiceRoll | None = None
     doubles_streak: int = 0
+    # Number of trade offers the current player has proposed this turn. Reset to 0 on
+    # every turn advance; capped at MAX_TRADE_OFFERS_PER_TURN by propose_trade.
+    trade_offers_made: int = 0
     actions_available: ActionSet = Field(default_factory=ActionSet)
     pending_buy_position: int | None = None
     # Absolute epoch-ms deadline for the current player's next action. The GameScheduler

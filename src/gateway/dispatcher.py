@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from typing import TYPE_CHECKING
 
 import structlog
 from pydantic import ValidationError
@@ -8,6 +9,10 @@ from pydantic import ValidationError
 from core.constants import WS_PROTOCOL_VERSION
 from gateway.handlers import HANDLERS
 from protocol.ws.envelope import RawEnvelope
+
+if TYPE_CHECKING:
+    from gateway.backplane import Backplane
+    from gateway.connection import Connection
 
 logger = structlog.get_logger(__name__)
 

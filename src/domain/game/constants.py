@@ -9,6 +9,9 @@ MORTGAGE_INTEREST = 0.10
 HOUSE_SELL_RATIO = 0.5
 AUCTION_DURATION_MS = 30_000
 TRADE_DURATION_MS = 60_000
+# Cap on how many trade offers a single player may propose during one of their turns.
+# Counter-offers (sent by the trade target while responding) do not count toward this.
+MAX_TRADE_OFFERS_PER_TURN = 3
 CARD_LANDING_RECURSION_LIMIT = 3
 
 # Per-player turn timer: the current player has this long to make their next move
