@@ -4,14 +4,11 @@ from domain.game.constants import JAIL_FINE, MAX_TRADE_OFFERS_PER_TURN
 from domain.game.enums import TurnPhase
 from domain.game.schemas.state import ActionSet, GameState
 from domain.game.rules.building import (
-    can_build_on,
-    can_mortgage,
-    can_unmortgage,
     has_any_buildable,
     has_any_mortgageable,
     has_any_unmortgageable,
 )
-from domain.game.rules.helpers import get_player_by_id_from_state
+from domain.game.rules.helpers import get_player_by_id_from_state, space_at
 
 
 def compute_actions(state: GameState, player_id: str | None = None) -> ActionSet:
@@ -60,15 +57,14 @@ def compute_actions(state: GameState, player_id: str | None = None) -> ActionSet
 
     if phase == TurnPhase.POST_ROLL:
         pending = state.turn.pending_buy_position
-        can_buy = pending is not None and state.spaces[pending].owner_id is None
+        can_buy = pending is not None and space_at(state.spaces, pending).owner_id is None
         return ActionSet(
             can_buy=can_buy,
             can_build=has_any_buildable(state, pid),
             can_mortgage=has_any_mortgageable(state, pid),
             can_unmortgage=has_any_unmortgageable(state, pid),
             can_trade=(
-                state.trade is None
-                and state.turn.trade_offers_made < MAX_TRADE_OFFERS_PER_TURN
+                state.trade is None and state.turn.trade_offers_made < MAX_TRADE_OFFERS_PER_TURN
             ),
             can_end_turn=pending is None,
             can_surrender=True,

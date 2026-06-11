@@ -46,4 +46,4 @@ def test_goojf_removed_from_deck(clock: FixedClock) -> None:
 
 
 def test_all_cards_defined() -> None:
-    assert len(ALL_CARDS) == 32
+    assert len(ALL_CARDS) == 40

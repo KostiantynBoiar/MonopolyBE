@@ -88,7 +88,7 @@ class RollDicePayload(BaseModel):
 class BuyPropertyPayload(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    position: int = Field(ge=0, le=39)
+    position: int = Field(ge=1)
 
 
 class PassBuyPayload(BaseModel):
@@ -110,25 +110,25 @@ class UseJailCardPayload(BaseModel):
 class BuildHousePayload(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    position: int = Field(ge=0, le=39)
+    position: int = Field(ge=1)
 
 
 class SellHousePayload(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    position: int = Field(ge=0, le=39)
+    position: int = Field(ge=1)
 
 
 class MortgagePayload(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    position: int = Field(ge=0, le=39)
+    position: int = Field(ge=1)
 
 
 class UnmortgagePayload(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    position: int = Field(ge=0, le=39)
+    position: int = Field(ge=1)
 
 
 class TradeOfferPayload(BaseModel):

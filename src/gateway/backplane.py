@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import logging
 from typing import Any, Callable
 
 import structlog
@@ -48,9 +47,7 @@ class Backplane:
             self._url, decode_responses=True, health_check_interval=30
         )
         self._pubsub = self._pubsub_source.pubsub()
-        self._reader_task = asyncio.create_task(
-            self._reader_loop(), name="backplane-reader"
-        )
+        self._reader_task = asyncio.create_task(self._reader_loop(), name="backplane-reader")
 
     async def stop(self) -> None:
         self._shutdown = True
@@ -144,11 +141,7 @@ class Backplane:
     async def _ensure_subscriptions(self) -> None:
         if self._pubsub is None:
             return
-        channels = [
-            f"session:{sid}"
-            for sid, count in self._subscriptions.items()
-            if count > 0
-        ]
+        channels = [f"session:{sid}" for sid, count in self._subscriptions.items() if count > 0]
         if channels:
             await self._pubsub.subscribe(*channels)
 

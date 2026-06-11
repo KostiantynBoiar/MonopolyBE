@@ -3,7 +3,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from core.constants import MAX_SESSION_MEMBERS
+from domain.game.enums import GameMode
 from domain.session.schemas import MemberRole, SessionStatus, SessionVisibility
 
 
@@ -12,6 +12,7 @@ class CreateSessionRequest(BaseModel):
 
     visibility: SessionVisibility = SessionVisibility.PUBLIC
     ranked: bool = True
+    game_mode: GameMode = GameMode.NORMAL
 
 
 class JoinByCodeRequest(BaseModel):
@@ -41,9 +42,10 @@ class SessionSummary(BaseModel):
     invite_code: str
     status: SessionStatus
     visibility: SessionVisibility
+    game_mode: GameMode = GameMode.NORMAL
     ranked: bool = True
     member_count: int
-    max_players: int = MAX_SESSION_MEMBERS
+    max_players: int
     host: HostSummary
     created_at: datetime
 

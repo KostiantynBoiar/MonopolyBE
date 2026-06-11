@@ -6,7 +6,8 @@ from domain.game.board_data import get_board_space, is_purchasable
 from domain.game.constants import DOUBLES_JAIL_THRESHOLD, MAX_AFK_STRIKES
 from domain.game.enums import CardKind, TurnPhase
 from domain.game.exceptions import IllegalMove
-from domain.game.rng import Clock, roll_dice
+from domain.game.modes import get_game_config
+from domain.game.rng import Clock, roll_dice_count
 from domain.game.schemas.commands import (
     AdvanceAuction,
     BuildHouse,
@@ -45,13 +46,23 @@ from domain.game.schemas.events import (
 from domain.game.schemas.state import DiceRoll, GameState
 from domain.game.rules.actions import with_actions
 from domain.game.rules.auction import is_auction_expired, place_bid, resolve_auction, start_auction
-from domain.game.rules.bankruptcy import advance_turn_off_player, check_win_condition, resolve_bankruptcy
+from domain.game.rules.bankruptcy import (
+    advance_turn_off_player,
+    check_win_condition,
+    resolve_bankruptcy,
+)
 from domain.game.rules.surrender import resolve_surrender
 from domain.game.rules.turn_timer import is_turn_expired, with_turn_deadline
 from domain.game.rules.payments import try_settle_debt
-from domain.game.rules.building import build_house, mortgage_property, sell_house, unmortgage_property
+from domain.game.rules.building import (
+    build_house,
+    mortgage_property,
+    sell_house,
+    unmortgage_property,
+)
 from domain.game.rules.cards import return_jail_card_to_deck
 from domain.game.rules.helpers import get_player_by_id_from_state, update_player_net_worth
+from domain.game.rules.helpers import replace_space, space_at
 from domain.game.rules.movement import (
     advance_position,
     apply_go_salary,
@@ -60,11 +71,13 @@ from domain.game.rules.movement import (
 )
 from domain.game.rules.trade import expire_trade, propose_trade, respond_trade
 
-_BUILD_PHASES = frozenset({
-    TurnPhase.PRE_ROLL,
-    TurnPhase.POST_ROLL,
-    TurnPhase.BANKRUPT_RESOLUTION,
-})
+_BUILD_PHASES = frozenset(
+    {
+        TurnPhase.PRE_ROLL,
+        TurnPhase.POST_ROLL,
+        TurnPhase.BANKRUPT_RESOLUTION,
+    }
+)
 
 
 def apply(
@@ -194,7 +207,8 @@ def _handle_roll_dice(
     if in_jail and phase == TurnPhase.PRE_ROLL:
         raise IllegalMove("must resolve jail decision before rolling")
 
-    die1, die2 = roll_dice(rng)
+    config = get_game_config(state.game_mode)
+    die1, die2 = roll_dice_count(rng, config.dice_count)
     is_doubles = die1 == die2
     dice_roll = DiceRoll(die1=die1, die2=die2, is_doubles=is_doubles)
     events: list[GameEvent] = []
@@ -219,12 +233,14 @@ def _handle_roll_dice(
         if remaining > 0:
             updated = player.model_copy(
                 update={
-                    "jail_status": player.jail_status.model_copy(update={"turns_remaining": remaining})  # type: ignore[union-attr]
+                    "jail_status": player.jail_status.model_copy(
+                        update={"turns_remaining": remaining}
+                    )  # type: ignore[union-attr]
                 }
             )
             players = list(state.players)
             idx = next(i for i, p in enumerate(players) if p.id == player.id)
-            players[idx] = update_player_net_worth(updated, state.spaces)
+            players[idx] = update_player_net_worth(updated, state.spaces, state.game_mode)
             new_turn = state.turn.model_copy(
                 update={
                     "dice_roll": dice_roll,
@@ -240,7 +256,7 @@ def _handle_roll_dice(
         )
         players = list(state.players)
         idx = next(i for i, p in enumerate(players) if p.id == player.id)
-        players[idx] = update_player_net_worth(freed, state.spaces)
+        players[idx] = update_player_net_worth(freed, state.spaces, state.game_mode)
         state = state.model_copy(update={"players": tuple(players)})
         return _execute_move(
             state,
@@ -260,8 +276,8 @@ def _handle_roll_dice(
     if is_doubles and new_streak >= DOUBLES_JAIL_THRESHOLD:
         players = list(state.players)
         idx = next(i for i, p in enumerate(players) if p.id == player.id)
-        jailed = send_to_jail(player)
-        players[idx] = update_player_net_worth(jailed, state.spaces)
+        jailed = send_to_jail(player, state.game_mode)
+        players[idx] = update_player_net_worth(jailed, state.spaces, state.game_mode)
         events.append(
             SentToJail(
                 player_id=player.id,
@@ -306,7 +322,7 @@ def _execute_move(
     *,
     extra_roll_allowed: bool,
 ) -> tuple[GameState, list[GameEvent]]:
-    new_pos, passed_go = advance_position(player.position, steps)
+    new_pos, passed_go = advance_position(player.position, steps, state.game_mode)
     moved_player = player.model_copy(update={"position": new_pos})
     events.append(
         PlayerMoved(
@@ -407,6 +423,7 @@ def _handle_pay_jail_fine(
     players[idx] = update_player_net_worth(
         player.model_copy(update={"jail_status": None, "balance": player.balance - jail_fine}),
         state.spaces,
+        state.game_mode,
     )
     new_turn = state.turn.model_copy(update={"phase": TurnPhase.PRE_ROLL})
     return state.model_copy(update={"players": tuple(players), "turn": new_turn}), []
@@ -436,6 +453,7 @@ def _handle_use_jail_card(
             }
         ),
         state.spaces,
+        state.game_mode,
     )
     new_turn = state.turn.model_copy(update={"phase": TurnPhase.PRE_ROLL})
     return state.model_copy(update={"players": tuple(players), "turn": new_turn}), []
@@ -452,15 +470,15 @@ def _handle_buy_property(
     if pending is None or pending != command.position:
         raise IllegalMove("property is not available to buy")
 
-    if not is_purchasable(command.position):
+    if not is_purchasable(command.position, state.game_mode):
         raise IllegalMove("space is not purchasable")
 
-    ownership = state.spaces[command.position]
+    ownership = space_at(state.spaces, command.position)
     if ownership.owner_id is not None:
         raise IllegalMove("property already owned")
 
     player = get_player_by_id_from_state(state, command.player_id)
-    board_space = get_board_space(command.position)
+    board_space = get_board_space(command.position, state.game_mode)
     price = board_space.price
     if price is None:
         raise IllegalMove("space has no price")
@@ -469,7 +487,7 @@ def _handle_buy_property(
         raise IllegalMove("insufficient funds")
 
     spaces = list(state.spaces)
-    spaces[command.position] = ownership.model_copy(update={"owner_id": player.id})
+    replace_space(spaces, command.position, ownership.model_copy(update={"owner_id": player.id}))
 
     owned = list(player.owned_positions)
     owned.append(command.position)
@@ -481,14 +499,12 @@ def _handle_buy_property(
     )
     players = list(state.players)
     idx = next(i for i, p in enumerate(players) if p.id == player.id)
-    players[idx] = update_player_net_worth(updated_player, tuple(spaces))
+    players[idx] = update_player_net_worth(updated_player, tuple(spaces), state.game_mode)
 
     # If the player rolled doubles, the extra roll was deferred until the purchase was
     # resolved — grant it now by returning to PRE_ROLL.
     next_phase = TurnPhase.PRE_ROLL if state.turn.doubles_streak > 0 else state.turn.phase
-    new_turn = state.turn.model_copy(
-        update={"pending_buy_position": None, "phase": next_phase}
-    )
+    new_turn = state.turn.model_copy(update={"pending_buy_position": None, "phase": next_phase})
     event = PropertyBought(
         player_id=player.id,
         player_name=player.display_name,
@@ -515,7 +531,7 @@ def _handle_pass_buy(
         raise IllegalMove("no property to pass on")
 
     player = get_player_by_id_from_state(state, command.player_id)
-    board_space = get_board_space(pending)
+    board_space = get_board_space(pending, state.game_mode)
     event = BuyDeclined(
         player_id=player.id,
         player_name=player.display_name,

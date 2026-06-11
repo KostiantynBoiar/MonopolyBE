@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import random
-from datetime import datetime
 from uuid import uuid4
 
-from domain.game.board_data import BOARD
 from domain.game.constants import BANK_HOTELS, BANK_HOUSES, TOKEN_COLORS, TURN_TIMEOUT_MS
-from domain.game.enums import GameStatus, TurnPhase
+from domain.game.enums import GameMode, GameStatus, TurnPhase
+from domain.game.modes import get_game_config
 from domain.game.rng import Clock
 from domain.game.rules.cards import initial_chance_deck, initial_chest_deck
 from domain.game.schemas.state import (
@@ -32,8 +31,11 @@ def new_game(
     rng: random.Random,
     clock: Clock,
     starting_balance: int = 1500,
+    game_mode: GameMode = GameMode.NORMAL,
 ) -> GameState:
     now = clock.now()
+    config = get_game_config(game_mode)
+    player_starting_balance = config.starting_balance or starting_balance
     member_order = list(members)
     rng.shuffle(member_order)
 
@@ -46,18 +48,25 @@ def new_game(
                 display_name=member.display_name,
                 token=TOKEN_COLORS[turn_order % len(TOKEN_COLORS)],
                 turn_order=turn_order,
-                balance=starting_balance,
-                net_worth=starting_balance,
+                position=config.start_position,
+                balance=player_starting_balance,
+                net_worth=player_starting_balance,
                 rating=member.rating,
             )
         )
 
-    spaces = tuple(SpaceOwnership(position=space.position) for space in BOARD)
+    spaces = tuple(SpaceOwnership(position=space.position) for space in config.board)
+    chance_deck = initial_chance_deck(rng, game_mode)
+    chest_deck = initial_chest_deck(rng, game_mode)
+    sudden_death_deadline_ms = None
+    if config.sudden_death_duration_ms is not None:
+        sudden_death_deadline_ms = int(now.timestamp() * 1000) + config.sudden_death_duration_ms
 
     current_player = players[0]
     return GameState(
         game_id=game_id,
         session_code=session_code,
+        game_mode=game_mode,
         status=GameStatus.IN_PROGRESS,
         created_at=now,
         started_at=now,
@@ -72,6 +81,7 @@ def new_game(
         spaces=spaces,
         bank_houses=BANK_HOUSES,
         bank_hotels=BANK_HOTELS,
-        chance_deck=initial_chance_deck(rng),
-        chest_deck=initial_chest_deck(rng),
+        chance_deck=chance_deck,
+        chest_deck=chest_deck,
+        sudden_death_deadline_ms=sudden_death_deadline_ms,
     )

@@ -9,42 +9,38 @@ from domain.game.constants import (
 )
 from domain.game.board_data import get_board_space
 from domain.game.enums import SpaceType
-from domain.game.schemas.state import PlayerState, SpaceOwnership
+from domain.game.schemas.state import GameState
 from domain.game.rules.helpers import (
     count_owned_railroads,
     count_owned_utilities,
     get_player_by_id,
     player_has_rent_monopoly,
+    space_at,
 )
 
 
 def calculate_rent(
     *,
+    state: GameState,
     position: int,
-    spaces: tuple[SpaceOwnership, ...],
-    players: tuple[PlayerState, ...],
     dice_total: int,
     rent_multiplier: int = 1,
 ) -> int:
-    ownership = spaces[position]
+    ownership = space_at(state.spaces, position)
     if ownership.owner_id is None or ownership.is_mortgaged:
         return 0
 
-    owner = get_player_by_id(players, ownership.owner_id)
-    board_space = get_board_space(position)
+    owner = get_player_by_id(state.players, ownership.owner_id)
+    board_space = get_board_space(position, state.game_mode)
 
     if board_space.type == SpaceType.RAILROAD:
-        count = count_owned_railroads(owner, spaces)
+        count = count_owned_railroads(owner, state.spaces, state.game_mode)
         base = RAILROAD_RENTS[min(count, MAX_RAILROADS_OWNED) - 1]
         return base * rent_multiplier
 
     if board_space.type == SpaceType.UTILITY:
-        count = count_owned_utilities(owner, spaces)
-        multiplier = (
-            UTILITY_RENT_MULTIPLIER_ONE
-            if count == 1
-            else UTILITY_RENT_MULTIPLIER_TWO
-        )
+        count = count_owned_utilities(owner, state.spaces, state.game_mode)
+        multiplier = UTILITY_RENT_MULTIPLIER_ONE if count == 1 else UTILITY_RENT_MULTIPLIER_TWO
         return multiplier * dice_total
 
     if board_space.type == SpaceType.PROPERTY and board_space.rent is not None:
@@ -56,7 +52,8 @@ def calculate_rent(
             and player_has_rent_monopoly(
                 owner,
                 board_space.color_group.value,
-                spaces,
+                state.spaces,
+                state.game_mode,
             )
         ):
             return amount * MONOPOLY_RENT_MULTIPLIER

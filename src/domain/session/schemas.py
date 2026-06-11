@@ -3,7 +3,8 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict
 
-from core.constants import MAX_SESSION_MEMBERS
+from domain.game.enums import GameMode
+from domain.game.modes import get_game_config
 
 
 class SessionStatus(StrEnum):
@@ -42,6 +43,7 @@ class Session(BaseModel):
     host_user_id: str
     status: SessionStatus
     visibility: SessionVisibility
+    game_mode: GameMode = GameMode.NORMAL
     ranked: bool = True
     members: tuple[SessionMember, ...]
     created_at: datetime
@@ -53,8 +55,12 @@ class Session(BaseModel):
     def member_count(self) -> int:
         return len(self.members)
 
+    @property
+    def max_players(self) -> int:
+        return get_game_config(self.game_mode).max_players
+
     def is_full(self) -> bool:
-        return self.member_count() >= MAX_SESSION_MEMBERS
+        return self.member_count() >= self.max_players
 
     def get_member(self, user_id: str) -> SessionMember | None:
         for member in self.members:

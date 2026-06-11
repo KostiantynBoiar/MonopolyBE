@@ -4,7 +4,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from domain.game.enums import GameStatus, LogKind, TokenColor, TradeStatus, TurnPhase
+from domain.game.enums import GameMode, GameStatus, LogKind, TokenColor, TradeStatus, TurnPhase
 from domain.game.schemas.cards import ActiveCard
 
 
@@ -175,6 +175,7 @@ class GameState(BaseModel):
 
     game_id: str
     session_code: str
+    game_mode: GameMode = GameMode.NORMAL
     status: GameStatus
     created_at: datetime
     started_at: datetime | None = None
@@ -191,4 +192,5 @@ class GameState(BaseModel):
     bank_hotels: int = 12
     chance_deck: tuple[str, ...] = ()
     chest_deck: tuple[str, ...] = ()
+    sudden_death_deadline_ms: int | None = None
     log: tuple[LogEntry, ...] = ()

@@ -1,17 +1,19 @@
 """Regressions: buying on a doubles roll, and bankruptcy not softlocking the turn."""
+
 from __future__ import annotations
 
 from domain.game.enums import GameStatus, TurnPhase
 from domain.game.rng import FixedClock
 from domain.game.rules.actions import compute_actions
 from domain.game.rules.auction import resolve_auction
-from domain.game.schemas.commands import BuyProperty, DeclareBankruptcy, EndTurn, PassBuy, RollDice
+from domain.game.rules.helpers import space_at
+from domain.game.schemas.commands import BuyProperty, DeclareBankruptcy, PassBuy, RollDice
 from domain.game.schemas.state import BankruptcyState, GameState
 from domain.game.setup import GameMember, new_game
 from tests.domain.game.conftest import SequencedRandom, apply_cmd
 
-# From GO (0), doubles [3,3] lands on 6 = Oriental Ave (an unowned, buyable property).
-_ORIENTAL = 6
+# From GO (1), doubles [3,3] lands on 7 = Oriental Ave.
+_ORIENTAL = 7
 
 
 def _three_player_game(clock: FixedClock) -> GameState:
@@ -44,7 +46,7 @@ def test_doubles_landing_on_buyable_allows_buy_then_extra_roll(
     # The deferred doubles extra roll is granted once the property is bought.
     assert bought.turn.phase == TurnPhase.PRE_ROLL
     assert bought.turn.pending_buy_position is None
-    assert bought.spaces[_ORIENTAL].owner_id == p1.id
+    assert space_at(bought.spaces, _ORIENTAL).owner_id == p1.id
 
 
 def test_doubles_pass_buy_grants_extra_roll_after_auction(

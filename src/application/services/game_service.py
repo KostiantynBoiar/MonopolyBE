@@ -15,12 +15,10 @@ from domain.game.exceptions import IllegalMove
 from domain.game.rng import FixedClock
 from domain.game.rules.actions import with_actions
 from domain.game.schemas.commands import (
-    AdvanceAuction,
     BuildHouse,
     BuyProperty,
     DeclareBankruptcy,
     EndTurn,
-    ExpireTrade,
     GameCommand,
     Mortgage,
     PassBuy,
@@ -131,6 +129,7 @@ class GameService:
             rng=rng,
             clock=clock,
             starting_balance=self._settings.game_starting_balance,
+            game_mode=session.game_mode,
         )
         state = with_actions(state)
         rng_state = GameRepository.serialize_rng(rng)

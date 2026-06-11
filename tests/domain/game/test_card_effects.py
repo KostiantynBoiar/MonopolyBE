@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from domain.game.constants import GOTO_JAIL_POSITION
 from domain.game.enums import CardKind, TurnPhase
 from domain.game.rng import FixedClock
 from domain.game.rules.cards import draw_and_apply
+from domain.game.rules.helpers import replace_space, space_at
 from domain.game.schemas.commands import RollDice
 from domain.game.schemas.state import DiceRoll, GameState
 from tests.domain.game.conftest import (
@@ -11,7 +11,6 @@ from tests.domain.game.conftest import (
     apply_cmd,
     monopoly_brown,
     with_deck_top,
-    with_monopoly,
     with_ownership,
     with_phase,
     with_player_at,
@@ -20,7 +19,7 @@ from tests.domain.game.conftest import (
 
 def test_advance_to_passing_go(two_player_game: GameState, clock: FixedClock) -> None:
     p1 = two_player_game.players[0]
-    state = with_player_at(two_player_game, 0, 5)
+    state = with_player_at(two_player_game, 0, 6)
     state = with_deck_top(state, CardKind.CHANCE, "chance_01")
     state = with_phase(state, TurnPhase.PRE_ROLL, current_player_id=p1.id)
 
@@ -30,14 +29,14 @@ def test_advance_to_passing_go(two_player_game: GameState, clock: FixedClock) ->
         clock,
         rng_values=[1, 1],
     )
-    assert new_state.players[0].position == 0
+    assert new_state.players[0].position == 1
     assert new_state.players[0].balance == 1700
     assert any(e.__class__.__name__ == "PassedGo" for e in events)
 
 
 def test_advance_to_boardwalk_no_go_bonus(two_player_game: GameState, clock: FixedClock) -> None:
     p1 = two_player_game.players[0]
-    state = with_player_at(two_player_game, 0, 35)
+    state = with_player_at(two_player_game, 0, 36)
     state = with_deck_top(state, CardKind.CHANCE, "chance_14")
     state = with_phase(state, TurnPhase.PRE_ROLL, current_player_id=p1.id)
     balance_before = state.players[0].balance
@@ -48,14 +47,14 @@ def test_advance_to_boardwalk_no_go_bonus(two_player_game: GameState, clock: Fix
         clock,
         rng_values=[1, 0],
     )
-    assert new_state.players[0].position == 39
+    assert new_state.players[0].position == 40
     assert new_state.players[0].balance == balance_before
     assert not any(e.__class__.__name__ == "PassedGo" for e in events)
 
 
 def test_collect_card(two_player_game: GameState, clock: FixedClock) -> None:
     p1 = two_player_game.players[0]
-    state = with_player_at(two_player_game, 0, 5)
+    state = with_player_at(two_player_game, 0, 6)
     state = with_deck_top(state, CardKind.CHANCE, "chance_07")
     state = with_phase(state, TurnPhase.PRE_ROLL, current_player_id=p1.id)
 
@@ -64,9 +63,9 @@ def test_collect_card(two_player_game: GameState, clock: FixedClock) -> None:
 
 
 def test_pay_card(two_player_game: GameState, clock: FixedClock) -> None:
-    # Start at pos 15 (PA Railroad); roll [1,1]=2 → pos 17 (Community Chest)
+    # Start at pos 16 (PA Railroad); roll [1,1]=2 -> pos 18 (Community Chest)
     p1 = two_player_game.players[0]
-    state = with_player_at(two_player_game, 0, 15)
+    state = with_player_at(two_player_game, 0, 16)
     state = with_deck_top(state, CardKind.COMMUNITY_CHEST, "chest_03")  # Pay $50
     state = with_phase(state, TurnPhase.PRE_ROLL, current_player_id=p1.id)
 
@@ -76,12 +75,12 @@ def test_pay_card(two_player_game: GameState, clock: FixedClock) -> None:
 
 def test_go_to_jail_card(two_player_game: GameState, clock: FixedClock) -> None:
     p1 = two_player_game.players[0]
-    state = with_player_at(two_player_game, 0, 5)
+    state = with_player_at(two_player_game, 0, 6)
     state = with_deck_top(state, CardKind.CHANCE, "chance_10")
     state = with_phase(state, TurnPhase.PRE_ROLL, current_player_id=p1.id)
 
     new_state, _ = apply_cmd(state, RollDice(player_id=p1.id), clock, rng_values=[1, 1])
-    assert new_state.players[0].position == 10
+    assert new_state.players[0].position == 11
     assert new_state.players[0].jail_status is not None
     assert new_state.turn.phase == TurnPhase.POST_ROLL
     assert new_state.turn.doubles_streak == 0
@@ -105,7 +104,7 @@ def test_get_out_of_jail_free_card(two_player_game: GameState, clock: FixedClock
 
 def test_collect_from_each_player(two_player_game: GameState, clock: FixedClock) -> None:
     p1 = two_player_game.players[0]
-    state = with_player_at(two_player_game, 0, 15)
+    state = with_player_at(two_player_game, 0, 16)
     state = with_deck_top(state, CardKind.COMMUNITY_CHEST, "chest_09")
     state = with_phase(state, TurnPhase.PRE_ROLL, current_player_id=p1.id)
 
@@ -115,10 +114,10 @@ def test_collect_from_each_player(two_player_game: GameState, clock: FixedClock)
 
 
 def test_pay_each_player(two_player_game: GameState, clock: FixedClock) -> None:
-    # Start at pos 21 (Kentucky); roll [1,1]=2 → pos 23 which is Indiana (property), not Chance.
-    # Instead start at pos 20 (Free Parking); roll [1,1]=2 → pos 22 (Chance).
+    # Start at pos 22 (Kentucky); roll [1,1]=2 -> pos 24 which is Indiana, not Chance.
+    # Instead start at pos 21 (Free Parking); roll [1,1]=2 -> pos 23 (Chance).
     p1 = two_player_game.players[0]
-    state = with_player_at(two_player_game, 0, 20)
+    state = with_player_at(two_player_game, 0, 21)
     state = with_deck_top(state, CardKind.CHANCE, "chance_15")  # Pay each player $50
     state = with_phase(state, TurnPhase.PRE_ROLL, current_player_id=p1.id)
 
@@ -131,9 +130,9 @@ def test_repairs_card(two_player_game: GameState, clock: FixedClock) -> None:
     p1 = two_player_game.players[0]
     state = monopoly_brown(two_player_game, p1.id)
     spaces = list(state.spaces)
-    spaces[1] = spaces[1].model_copy(update={"houses": 2})
+    replace_space(spaces, 2, space_at(spaces, 2).model_copy(update={"houses": 2}))
     state = state.model_copy(update={"spaces": tuple(spaces)})
-    state = with_player_at(state, 0, 5)
+    state = with_player_at(state, 0, 6)
     state = with_deck_top(state, CardKind.CHANCE, "chance_11")
     state = with_phase(state, TurnPhase.PRE_ROLL, current_player_id=p1.id)
 
@@ -142,42 +141,47 @@ def test_repairs_card(two_player_game: GameState, clock: FixedClock) -> None:
 
 
 def test_active_card_cleared_on_next_command(two_player_game: GameState, clock: FixedClock) -> None:
-    # Start at pos 5 (Railroad); roll [1,1]=2 → pos 7 (Chance) → draws collect $50 card.
+    # Start at pos 6 (Railroad); roll [1,1]=2 -> pos 8 (Chance) -> draws collect $50 card.
     # Then manually set phase to POST_ROLL and EndTurn to clear active_card.
-    from domain.game.schemas.commands import EndTurn, PassBuy
+    from domain.game.schemas.commands import EndTurn
 
     p1 = two_player_game.players[0]
-    state = with_player_at(two_player_game, 0, 5)
+    state = with_player_at(two_player_game, 0, 6)
     state = with_deck_top(state, CardKind.CHANCE, "chance_07")  # Collect $50
     state = with_phase(state, TurnPhase.PRE_ROLL, current_player_id=p1.id)
 
     after_card, _ = apply_cmd(state, RollDice(player_id=p1.id), clock, rng_values=[1, 1])
     # After landing on Chance and drawing a collect card, active_card is set and
-    # phase should be POST_ROLL (no pending buy at pos 7).
+    # phase should be POST_ROLL (no pending buy at pos 8).
     assert after_card.active_card is not None
 
     # EndTurn clears active_card on the next command.
     state_post = after_card.model_copy(
-        update={"turn": after_card.turn.model_copy(update={"phase": TurnPhase.POST_ROLL, "pending_buy_position": None})}
+        update={
+            "turn": after_card.turn.model_copy(
+                update={"phase": TurnPhase.POST_ROLL, "pending_buy_position": None}
+            )
+        }
     )
     after_end, _ = apply_cmd(state_post, EndTurn(player_id=p1.id), clock)
     assert after_end.active_card is None
 
 
-def test_advance_to_nearest_railroad_double_rent(two_player_game: GameState, clock: FixedClock) -> None:
-    # p2 owns Reading Railroad (pos 5). Player 1 starts at pos 20 (Free Parking),
-    # rolls [1,1]=2 → pos 22 (Chance) → advance_to_nearest railroad.
-    # From pos 22, nearest railroad is pos 25 (B&O Railroad), not pos 5.
-    # Use pos 23 to make nearest railroad pos 25. But p2 must own that railroad.
+def test_advance_to_nearest_railroad_double_rent(
+    two_player_game: GameState, clock: FixedClock
+) -> None:
+    # p2 owns B&O Railroad. Player 1 starts at pos 21 (Free Parking),
+    # rolls [1,1]=2 -> pos 23 (Chance) -> advance_to_nearest railroad.
+    # From pos 23, nearest railroad is pos 26.
     p1, p2 = two_player_game.players
-    state = with_ownership(two_player_game, 25, p2.id)  # p2 owns B&O Railroad (pos 25)
-    state = with_player_at(state, 0, 20)                # p1 starts at Free Parking
+    state = with_ownership(two_player_game, 26, p2.id)
+    state = with_player_at(state, 0, 21)
     state = with_deck_top(state, CardKind.CHANCE, "chance_05")  # advance to nearest RR, pay double
     state = with_phase(state, TurnPhase.PRE_ROLL, current_player_id=p1.id)
 
     new_state, events = apply_cmd(state, RollDice(player_id=p1.id), clock, rng_values=[1, 1])
-    # Lands on Chance (22), draws card → advances to nearest railroad (25, owned by p2)
-    assert new_state.players[0].position == 25
+    # Lands on Chance (23), draws card -> advances to nearest railroad (26, owned by p2)
+    assert new_state.players[0].position == 26
     assert any(e.__class__.__name__ == "RentPaid" for e in events)
     rent_event = next(e for e in events if e.__class__.__name__ == "RentPaid")
     # p2 owns 1 railroad → base rent = 25, doubled by card → 50
@@ -185,14 +189,14 @@ def test_advance_to_nearest_railroad_double_rent(two_player_game: GameState, clo
 
 
 def test_go_to_jail_corner(two_player_game: GameState, clock: FixedClock) -> None:
-    # Start at pos 28 (Water Works), roll [1,1]=2 → pos 30 (Go to Jail corner).
-    # Player gets moved to jail (position 10), not left at position 30.
+    # Start at pos 29 (Water Works), roll [1,1]=2 -> pos 31 (Go to Jail corner).
+    # Player gets moved to jail (position 11), not left at position 31.
     p1 = two_player_game.players[0]
-    state = with_player_at(two_player_game, 0, 28)
+    state = with_player_at(two_player_game, 0, 29)
     state = with_phase(state, TurnPhase.PRE_ROLL, current_player_id=p1.id)
 
     new_state, _ = apply_cmd(state, RollDice(player_id=p1.id), clock, rng_values=[1, 1])
-    assert new_state.players[0].position == 10  # Sent to Jail tile (Just Visiting)
+    assert new_state.players[0].position == 11  # Sent to Jail tile (Just Visiting)
     assert new_state.players[0].jail_status is not None
     assert new_state.turn.phase == TurnPhase.POST_ROLL
     assert new_state.turn.doubles_streak == 0

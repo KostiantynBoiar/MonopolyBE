@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import pytest
 from starlette.testclient import TestClient
 
-from tests.conftest import create_session
+from tests.conftest import create_session, register_user
 
 
 def test_create_and_list_public_lobby(
@@ -24,6 +23,8 @@ def test_create_and_list_public_lobby(
     assert body["session"]["invite_code"].startswith("TYC-")
     assert body["session"]["your_role"] == "host"
     assert body["session"]["member_count"] == 1
+    assert body["session"]["game_mode"] == "normal"
+    assert body["session"]["max_players"] == 8
 
     list_resp = client.get(
         "/api/v1/sessions",
@@ -32,6 +33,42 @@ def test_create_and_list_public_lobby(
     assert list_resp.status_code == 200
     items = list_resp.json()["items"]
     assert any(item["id"] == session_id for item in items)
+    listed = next(item for item in items if item["id"] == session_id)
+    assert listed["game_mode"] == "normal"
+    assert listed["max_players"] == 8
+
+
+def test_create_duel_session_has_mode_capacity_and_rejects_third_player(
+    client: TestClient,
+    user_pair: tuple,
+    auth_header,
+) -> None:
+    (_, host_token), (_, guest_token) = user_pair
+    _, third_token = register_user(client, "third")
+
+    create_resp = client.post(
+        "/api/v1/sessions",
+        json={"visibility": "public", "game_mode": "duel"},
+        headers=auth_header(host_token),
+    )
+    assert create_resp.status_code == 201
+    session = create_resp.json()["session"]
+    assert session["game_mode"] == "duel"
+    assert session["max_players"] == 2
+
+    join_resp = client.post(
+        f"/api/v1/sessions/{session['id']}/join",
+        headers=auth_header(guest_token),
+    )
+    assert join_resp.status_code == 200
+    assert join_resp.json()["session"]["member_count"] == 2
+    assert join_resp.json()["session"]["max_players"] == 2
+
+    third_join_resp = client.post(
+        f"/api/v1/sessions/{session['id']}/join",
+        headers=auth_header(third_token),
+    )
+    assert third_join_resp.status_code == 409
 
 
 def test_private_not_in_lobby_list(

@@ -3,19 +3,16 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from uuid import uuid4
 
-from domain.game.board_data import get_board_space
 from domain.game.constants import MAX_TRADE_OFFERS_PER_TURN, TRADE_DURATION_MS
 from domain.game.enums import TradeResponse, TradeStatus, TurnPhase
 from domain.game.exceptions import IllegalMove
 from domain.game.schemas.state import GameState, PlayerState, SpaceOwnership, TradeOffer, TradeState
-from domain.game.rules.building import unmortgage_cost
-from domain.game.rules.cards import return_jail_card_to_deck
 from domain.game.rules.helpers import (
     get_player_by_id_from_state,
     refresh_all_net_worth,
-    update_player_net_worth,
+    replace_space,
+    space_at,
 )
-from domain.game.enums import CardKind
 
 
 def validate_trade_offer(state: GameState, player_id: str, offer: TradeOffer) -> None:
@@ -25,7 +22,7 @@ def validate_trade_offer(state: GameState, player_id: str, offer: TradeOffer) ->
     if offer.get_out_of_jail_cards > player.get_out_of_jail_cards:
         raise IllegalMove("insufficient jail cards in trade offer")
     for pos in offer.positions:
-        ownership = state.spaces[pos]
+        ownership = space_at(state.spaces, pos)
         if ownership.owner_id != player_id:
             raise IllegalMove("cannot trade property you do not own")
         if ownership.houses > 0 or ownership.has_hotel:
@@ -175,7 +172,9 @@ def _transfer_offer(
     for pos in offer.positions:
         giver_owned.discard(pos)
         receiver_owned.add(pos)
-        spaces[pos] = spaces[pos].model_copy(update={"owner_id": receiver_id})
+        replace_space(
+            spaces, pos, space_at(spaces, pos).model_copy(update={"owner_id": receiver_id})
+        )
     giver = giver.model_copy(update={"owned_positions": tuple(sorted(giver_owned))})
     receiver = receiver.model_copy(update={"owned_positions": tuple(sorted(receiver_owned))})
     return giver, receiver, spaces

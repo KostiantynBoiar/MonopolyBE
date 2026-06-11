@@ -5,6 +5,7 @@ import pytest
 from domain.game.enums import TurnPhase
 from domain.game.exceptions import IllegalMove
 from domain.game.rng import FixedClock
+from domain.game.rules.helpers import space_at
 from domain.game.schemas.commands import (
     BuyProperty,
     EndTurn,
@@ -28,7 +29,7 @@ def test_new_game_initial_state(two_player_game: GameState) -> None:
 
 
 def test_roll_moves_player(two_player_game: GameState, clock: FixedClock) -> None:
-    # Roll [2,4]=6 → pos 6 (Oriental Ave, a plain unowned property — no card/tax)
+    # Roll [2,4]=6 -> pos 7 (Oriental Ave, a plain unowned property).
     player = two_player_game.players[0]
     new_state, _ = apply_cmd(
         two_player_game,
@@ -36,14 +37,14 @@ def test_roll_moves_player(two_player_game: GameState, clock: FixedClock) -> Non
         clock,
         rng_values=[2, 4],
     )
-    assert new_state.players[0].position == 6
+    assert new_state.players[0].position == 7
     assert new_state.turn.phase == TurnPhase.POST_ROLL
 
 
 def test_passing_go_adds_salary(two_player_game: GameState, clock: FixedClock) -> None:
     player = two_player_game.players[0]
     players = list(two_player_game.players)
-    players[0] = player.model_copy(update={"position": 35})
+    players[0] = player.model_copy(update={"position": 36})
     state = two_player_game.model_copy(update={"players": tuple(players)})
 
     new_state, events = apply_cmd(
@@ -52,20 +53,14 @@ def test_passing_go_adds_salary(two_player_game: GameState, clock: FixedClock) -
         clock,
         rng_values=[3, 2],
     )
-    assert new_state.players[0].position == 0
+    assert new_state.players[0].position == 1
     assert new_state.players[0].balance == 1700
     assert any(e.__class__.__name__ == "PassedGo" for e in events)
 
 
 def test_rent_payment(two_player_game: GameState, clock: FixedClock) -> None:
-    # p2 owns Mediterranean Ave (pos 1); roll [1,2]=3 → pos 3 (Baltic Ave).
-    # But p2 must own Baltic too for double rent. Use pos 1 (Mediterranean) instead:
-    # player starts at pos 0, roll [1,1]=2 would hit pos 2 (Community Chest).
-    # Safest: start at pos 0, roll [1,0]=1 → pos 1 owned by p2, rent = $2.
-    # die2=0 is invalid (randint 1-6) so use [1,1]=2 → Community Chest (special tile).
-    # Use roll [2,2]=4 from pos 0 → pos 4 (Income Tax).
-    # Best: p2 owns pos 6, start at pos 0, roll [2,4]=6 → pos 6 owned by p2.
-    state = owned_by_p2(two_player_game, 6)
+    # p2 owns Oriental Ave; from start pos 1, roll [2,4]=6 -> pos 7.
+    state = owned_by_p2(two_player_game, 7)
     p1 = state.players[0]
     new_state, events = apply_cmd(
         state,
@@ -83,16 +78,16 @@ def test_rent_payment(two_player_game: GameState, clock: FixedClock) -> None:
 def test_buy_property(two_player_game: GameState, clock: FixedClock) -> None:
     player = two_player_game.players[0]
     turn = two_player_game.turn.model_copy(
-        update={"phase": TurnPhase.POST_ROLL, "pending_buy_position": 1}
+        update={"phase": TurnPhase.POST_ROLL, "pending_buy_position": 2}
     )
     state = two_player_game.model_copy(update={"turn": turn})
 
     new_state, events = apply_cmd(
         state,
-        BuyProperty(player_id=player.id, position=1),
+        BuyProperty(player_id=player.id, position=2),
         clock,
     )
-    assert new_state.spaces[1].owner_id == player.id
+    assert space_at(new_state.spaces, 2).owner_id == player.id
     assert new_state.players[0].balance == 1440
     assert any(e.__class__.__name__ == "PropertyBought" for e in events)
 
@@ -100,13 +95,13 @@ def test_buy_property(two_player_game: GameState, clock: FixedClock) -> None:
 def test_pass_buy_starts_auction(two_player_game: GameState, clock: FixedClock) -> None:
     player = two_player_game.players[0]
     turn = two_player_game.turn.model_copy(
-        update={"phase": TurnPhase.POST_ROLL, "pending_buy_position": 1}
+        update={"phase": TurnPhase.POST_ROLL, "pending_buy_position": 2}
     )
     state = two_player_game.model_copy(update={"turn": turn})
 
     new_state, events = apply_cmd(state, PassBuy(player_id=player.id), clock)
     assert new_state.auction is not None
-    assert new_state.auction.property_position == 1
+    assert new_state.auction.property_position == 2
     assert new_state.turn.phase == TurnPhase.AUCTION
     assert any(e.__class__.__name__ == "BuyDeclined" for e in events)
 
@@ -153,7 +148,7 @@ def test_third_doubles_sends_to_jail(two_player_game: GameState, clock: FixedClo
         clock,
         rng_values=[3, 3],
     )
-    assert new_state.players[0].position == 10
+    assert new_state.players[0].position == 11
     assert new_state.players[0].jail_status is not None
     assert new_state.turn.phase == TurnPhase.POST_ROLL
     assert new_state.turn.doubles_streak == 0

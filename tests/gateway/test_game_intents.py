@@ -3,6 +3,7 @@ from __future__ import annotations
 from starlette.testclient import TestClient
 
 from domain.game.enums import TurnPhase
+from domain.game.rules.helpers import replace_space, space_at
 from domain.game.schemas.state import BankruptcyState, GameState, JailStatus, PlayerState
 from tests.gateway.game_helpers import (
     GameSetup,
@@ -10,7 +11,6 @@ from tests.gateway.game_helpers import (
     envelope,
     load_game_state,
     mutate_game_state,
-    other_token_for_current,
     recv_error,
     recv_game_state,
     seed_post_roll_buyable,
@@ -38,6 +38,10 @@ def _started_game(client: TestClient) -> tuple[GameSetup, str]:
     return setup, token
 
 
+def _payload_space(payload: dict, position: int) -> dict:
+    return next(space for space in payload["spaces"] if space["position"] == position)
+
+
 def test_roll_dice_intent(client: TestClient) -> None:
     setup, token = _started_game(client)
     with client.websocket_connect(
@@ -53,7 +57,7 @@ def test_roll_dice_intent(client: TestClient) -> None:
 
 def test_buy_property_intent(client: TestClient) -> None:
     setup, token = _started_game(client)
-    seed_post_roll_buyable(client, setup.session_id, position=1)
+    seed_post_roll_buyable(client, setup.session_id, position=2)
     with client.websocket_connect(
         f"/ws/sessions/{setup.session_id}",
         headers=ws_headers(token),
@@ -61,15 +65,15 @@ def test_buy_property_intent(client: TestClient) -> None:
         ws.receive_json()
         snap = recv_game_state(ws)
         position = snap["payload"]["turn"]["pending_buy_position"]
-        assert position == 1
+        assert position == 2
         ws.send_text(envelope("game.buy_property", {"position": position}))
         buy_msg = recv_game_state(ws)
-        assert buy_msg["payload"]["spaces"][position]["owner_id"] is not None
+        assert _payload_space(buy_msg["payload"], position)["owner_id"] is not None
 
 
 def test_buy_property_wrong_position(client: TestClient) -> None:
     setup, token = _started_game(client)
-    seed_post_roll_buyable(client, setup.session_id, position=1)
+    seed_post_roll_buyable(client, setup.session_id, position=2)
     with client.websocket_connect(
         f"/ws/sessions/{setup.session_id}",
         headers=ws_headers(token),
@@ -85,7 +89,7 @@ def test_buy_property_wrong_position(client: TestClient) -> None:
 
 def test_pass_buy_starts_auction(client: TestClient) -> None:
     setup, token = _started_game(client)
-    seed_post_roll_buyable(client, setup.session_id, position=1)
+    seed_post_roll_buyable(client, setup.session_id, position=2)
     with client.websocket_connect(
         f"/ws/sessions/{setup.session_id}",
         headers=ws_headers(token),
@@ -132,9 +136,7 @@ def test_pay_jail_fine_intent(client: TestClient) -> None:
     current = _current_player(base)
 
     def jailed(state: GameState) -> GameState:
-        jailed_player = current.model_copy(
-            update={"jail_status": JailStatus(turns_remaining=3)}
-        )
+        jailed_player = current.model_copy(update={"jail_status": JailStatus(turns_remaining=3)})
         players = list(state.players)
         idx = next(i for i, p in enumerate(players) if p.id == current.id)
         players[idx] = jailed_player
@@ -210,7 +212,7 @@ def test_build_house_intent(client: TestClient) -> None:
         s = monopoly_brown(state, current.id)
         return with_phase(s, TurnPhase.POST_ROLL, current_player_id=current.id)
 
-    state = mutate_game_state(client, setup.session_id, seeded)
+    mutate_game_state(client, setup.session_id, seeded)
     token = _token_for_player(setup, current)
     with client.websocket_connect(
         f"/ws/sessions/{setup.session_id}",
@@ -218,9 +220,9 @@ def test_build_house_intent(client: TestClient) -> None:
     ) as ws:
         ws.receive_json()
         recv_game_state(ws)
-        ws.send_text(envelope("game.build_house", {"position": 1}))
+        ws.send_text(envelope("game.build_house", {"position": 2}))
         msg = recv_game_state(ws)
-        assert msg["payload"]["spaces"][1]["houses"] == 1
+        assert _payload_space(msg["payload"], 2)["houses"] == 1
 
 
 def test_build_house_even_build_violation(client: TestClient) -> None:
@@ -232,7 +234,7 @@ def test_build_house_even_build_violation(client: TestClient) -> None:
     def seeded(state: GameState) -> GameState:
         s = monopoly_brown(state, current.id)
         spaces = list(s.spaces)
-        spaces[1] = spaces[1].model_copy(update={"houses": 1})
+        replace_space(spaces, 2, space_at(spaces, 2).model_copy(update={"houses": 1}))
         s = s.model_copy(update={"spaces": tuple(spaces)})
         return with_phase(s, TurnPhase.POST_ROLL, current_player_id=current.id)
 
@@ -244,8 +246,8 @@ def test_build_house_even_build_violation(client: TestClient) -> None:
     ) as ws:
         ws.receive_json()
         recv_game_state(ws)
-        # pos 1 already has 1 house; pos 3 has 0. Building on pos 1 again (→ 2,0) violates even-build.
-        ws.send_text(envelope("game.build_house", {"position": 1}))
+        # pos 2 already has 1 house; pos 4 has 0. Building on pos 2 again violates even-build.
+        ws.send_text(envelope("game.build_house", {"position": 2}))
         err = recv_error(ws)
         assert err["payload"]["code"] == "illegal_action"
 
@@ -259,8 +261,8 @@ def test_sell_house_intent(client: TestClient) -> None:
     def seeded(state: GameState) -> GameState:
         s = monopoly_brown(state, current.id)
         spaces = list(s.spaces)
-        spaces[1] = spaces[1].model_copy(update={"houses": 2})
-        spaces[3] = spaces[3].model_copy(update={"houses": 1})
+        replace_space(spaces, 2, space_at(spaces, 2).model_copy(update={"houses": 2}))
+        replace_space(spaces, 4, space_at(spaces, 4).model_copy(update={"houses": 1}))
         s = s.model_copy(update={"spaces": tuple(spaces), "bank_houses": 30})
         return with_phase(s, TurnPhase.POST_ROLL, current_player_id=current.id)
 
@@ -272,9 +274,9 @@ def test_sell_house_intent(client: TestClient) -> None:
     ) as ws:
         ws.receive_json()
         recv_game_state(ws)
-        ws.send_text(envelope("game.sell_house", {"position": 1}))
+        ws.send_text(envelope("game.sell_house", {"position": 2}))
         msg = recv_game_state(ws)
-        assert msg["payload"]["spaces"][1]["houses"] == 1
+        assert _payload_space(msg["payload"], 2)["houses"] == 1
 
 
 def test_mortgage_and_unmortgage_intents(client: TestClient) -> None:
@@ -295,13 +297,13 @@ def test_mortgage_and_unmortgage_intents(client: TestClient) -> None:
     ) as ws:
         ws.receive_json()
         recv_game_state(ws)
-        ws.send_text(envelope("game.mortgage", {"position": 1}))
+        ws.send_text(envelope("game.mortgage", {"position": 2}))
         mort_msg = recv_game_state(ws)
-        assert mort_msg["payload"]["spaces"][1]["is_mortgaged"] is True
+        assert _payload_space(mort_msg["payload"], 2)["is_mortgaged"] is True
 
-        ws.send_text(envelope("game.unmortgage", {"position": 1}))
+        ws.send_text(envelope("game.unmortgage", {"position": 2}))
         unmort_msg = recv_game_state(ws)
-        assert unmort_msg["payload"]["spaces"][1]["is_mortgaged"] is False
+        assert _payload_space(unmort_msg["payload"], 2)["is_mortgaged"] is False
 
 
 def test_propose_and_respond_trade_intents(client: TestClient) -> None:
@@ -355,7 +357,7 @@ def test_propose_and_respond_trade_intents(client: TestClient) -> None:
 
 def test_place_bid_intent(client: TestClient) -> None:
     setup, token = _started_game(client)
-    seed_post_roll_buyable(client, setup.session_id, position=1)
+    seed_post_roll_buyable(client, setup.session_id, position=2)
     with client.websocket_connect(
         f"/ws/sessions/{setup.session_id}",
         headers=ws_headers(token),
@@ -373,7 +375,7 @@ def test_place_bid_intent(client: TestClient) -> None:
 
 def test_place_bid_too_low_rejected(client: TestClient) -> None:
     setup, token = _started_game(client)
-    seed_post_roll_buyable(client, setup.session_id, position=1)
+    seed_post_roll_buyable(client, setup.session_id, position=2)
     with client.websocket_connect(
         f"/ws/sessions/{setup.session_id}",
         headers=ws_headers(token),

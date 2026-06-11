@@ -1,19 +1,42 @@
 from __future__ import annotations
 
-from domain.game.constants import (
-    HOTEL_HOUSE_COUNT,
-    RAILROAD_POSITIONS,
-    UTILITY_POSITIONS,
-)
-from domain.game.board_data import BOARD, get_board_space
+from domain.game.constants import HOTEL_HOUSE_COUNT
+from domain.game.board_data import get_board_space
+from domain.game.enums import GameMode
+from domain.game.modes import get_game_config
 from domain.game.schemas.state import GameState, PlayerState, SpaceOwnership
 
 
-def compute_net_worth(player: PlayerState, spaces: tuple[SpaceOwnership, ...]) -> int:
+def space_index(spaces: tuple[SpaceOwnership, ...] | list[SpaceOwnership], position: int) -> int:
+    for index, ownership in enumerate(spaces):
+        if ownership.position == position:
+            return index
+    raise KeyError(position)
+
+
+def space_at(
+    spaces: tuple[SpaceOwnership, ...] | list[SpaceOwnership], position: int
+) -> SpaceOwnership:
+    return spaces[space_index(spaces, position)]
+
+
+def replace_space(
+    spaces: list[SpaceOwnership],
+    position: int,
+    ownership: SpaceOwnership,
+) -> None:
+    spaces[space_index(spaces, position)] = ownership
+
+
+def compute_net_worth(
+    player: PlayerState,
+    spaces: tuple[SpaceOwnership, ...],
+    game_mode: GameMode = GameMode.NORMAL,
+) -> int:
     total = player.balance
     for pos in player.owned_positions:
-        space = get_board_space(pos)
-        ownership = spaces[pos]
+        space = get_board_space(pos, game_mode)
+        ownership = space_at(spaces, pos)
         if ownership.is_mortgaged:
             continue
         if space.price is not None:
@@ -28,20 +51,23 @@ def compute_net_worth(player: PlayerState, spaces: tuple[SpaceOwnership, ...]) -
 def update_player_net_worth(
     player: PlayerState,
     spaces: tuple[SpaceOwnership, ...],
+    game_mode: GameMode = GameMode.NORMAL,
 ) -> PlayerState:
-    return player.model_copy(update={"net_worth": compute_net_worth(player, spaces)})
+    return player.model_copy(update={"net_worth": compute_net_worth(player, spaces, game_mode)})
 
 
 def refresh_all_net_worth(
     state: GameState,
 ) -> tuple[PlayerState, ...]:
-    return tuple(update_player_net_worth(p, state.spaces) for p in state.players)
+    return tuple(update_player_net_worth(p, state.spaces, state.game_mode) for p in state.players)
 
 
-def positions_in_color_group(color_group: str) -> tuple[int, ...]:
+def positions_in_color_group(
+    color_group: str, game_mode: GameMode = GameMode.NORMAL
+) -> tuple[int, ...]:
     return tuple(
         space.position
-        for space in BOARD
+        for space in get_game_config(game_mode).board
         if space.color_group is not None and space.color_group.value == color_group
     )
 
@@ -50,13 +76,14 @@ def player_owns_full_color_group(
     player: PlayerState,
     color_group: str,
     spaces: tuple[SpaceOwnership, ...],
+    game_mode: GameMode = GameMode.NORMAL,
 ) -> bool:
     """True if player owns all properties in a color group with no buildings."""
-    group_positions = positions_in_color_group(color_group)
+    group_positions = positions_in_color_group(color_group, game_mode)
     if not group_positions:
         return False
     for pos in group_positions:
-        ownership = spaces[pos]
+        ownership = space_at(spaces, pos)
         if ownership.owner_id != player.id:
             return False
         if ownership.houses > 0 or ownership.has_hotel:
@@ -68,31 +95,40 @@ def player_has_rent_monopoly(
     player: PlayerState,
     color_group: str,
     spaces: tuple[SpaceOwnership, ...],
+    game_mode: GameMode = GameMode.NORMAL,
 ) -> bool:
     """True if player owns all unmortgaged properties in a color group."""
-    group_positions = positions_in_color_group(color_group)
+    group_positions = positions_in_color_group(color_group, game_mode)
     if not group_positions:
         return False
     for pos in group_positions:
-        ownership = spaces[pos]
+        ownership = space_at(spaces, pos)
         if ownership.owner_id != player.id or ownership.is_mortgaged:
             return False
     return True
 
 
-def count_owned_railroads(player: PlayerState, spaces: tuple[SpaceOwnership, ...]) -> int:
+def count_owned_railroads(
+    player: PlayerState,
+    spaces: tuple[SpaceOwnership, ...],
+    game_mode: GameMode = GameMode.NORMAL,
+) -> int:
     return sum(
         1
-        for pos in RAILROAD_POSITIONS
-        if spaces[pos].owner_id == player.id and not spaces[pos].is_mortgaged
+        for pos in get_game_config(game_mode).railroad_positions
+        if space_at(spaces, pos).owner_id == player.id and not space_at(spaces, pos).is_mortgaged
     )
 
 
-def count_owned_utilities(player: PlayerState, spaces: tuple[SpaceOwnership, ...]) -> int:
+def count_owned_utilities(
+    player: PlayerState,
+    spaces: tuple[SpaceOwnership, ...],
+    game_mode: GameMode = GameMode.NORMAL,
+) -> int:
     return sum(
         1
-        for pos in UTILITY_POSITIONS
-        if spaces[pos].owner_id == player.id and not spaces[pos].is_mortgaged
+        for pos in get_game_config(game_mode).utility_positions
+        if space_at(spaces, pos).owner_id == player.id and not space_at(spaces, pos).is_mortgaged
     )
 
 

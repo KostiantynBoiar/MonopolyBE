@@ -17,12 +17,14 @@ def ws_headers(token: str) -> dict[str, str]:
 
 
 def envelope(msg_type: str, payload: dict | None = None) -> str:
-    return json.dumps({
-        "v": 1,
-        "type": msg_type,
-        "ts": datetime.now(UTC).isoformat(),
-        "payload": payload or {},
-    })
+    return json.dumps(
+        {
+            "v": 1,
+            "type": msg_type,
+            "ts": datetime.now(UTC).isoformat(),
+            "payload": payload or {},
+        }
+    )
 
 
 def start_session(client: TestClient, session_id: str, host_token: str) -> None:
@@ -156,18 +158,19 @@ def mutate_game_state(
     return updated
 
 
-def seed_post_roll_buyable(
-    client: TestClient, session_id: str, position: int = 1
-) -> GameState:
+def seed_post_roll_buyable(client: TestClient, session_id: str, position: int = 2) -> GameState:
     """Deterministically put the current player in POST_ROLL standing on an unowned,
-    purchasable property (default Mediterranean Ave, pos 1) with can_buy available —
+    purchasable property (default Mediterranean Ave, pos 2) with can_buy available —
     avoids the flakiness of rolling until a random buyable tile is reached."""
     from domain.game.enums import TurnPhase
 
     def _mutate(state: GameState) -> GameState:
+        from domain.game.rules.helpers import space_index
+
         cur = state.turn.current_player_id
         spaces = list(state.spaces)
-        spaces[position] = spaces[position].model_copy(
+        space_idx = space_index(spaces, position)
+        spaces[space_idx] = spaces[space_idx].model_copy(
             update={"owner_id": None, "houses": 0, "has_hotel": False, "is_mortgaged": False}
         )
         players = list(state.players)
@@ -223,7 +226,7 @@ def assert_dual_broadcast(
         ) as guest_ws,
     ):
         # Drain welcome + session.updated + initial game.state from both sockets.
-        host_ws.receive_json()   # system.welcome
+        host_ws.receive_json()  # system.welcome
         guest_ws.receive_json()  # system.welcome
         host_snap = recv_game_state(host_ws)
         recv_game_state(guest_ws)

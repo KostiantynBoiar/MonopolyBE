@@ -3,12 +3,9 @@ from __future__ import annotations
 import random
 
 from domain.game.cards_data import ALL_CARDS, DEFAULT_CHANCE_DECK, DEFAULT_CHEST_DECK
-from domain.game.constants import (
-    CARD_LANDING_RECURSION_LIMIT,
-    RAILROAD_POSITIONS,
-    UTILITY_POSITIONS,
-)
-from domain.game.enums import CardKind
+from domain.game.constants import CARD_LANDING_RECURSION_LIMIT
+from domain.game.enums import CardKind, GameMode
+from domain.game.modes import get_game_config
 from domain.game.schemas.cards import (
     ActiveCard,
     AdvanceToEffect,
@@ -28,6 +25,7 @@ from domain.game.schemas.state import DiceRoll, GameState, PlayerState
 from domain.game.rules.helpers import (
     get_player_by_id_from_state,
     refresh_all_net_worth,
+    space_at,
     update_player_net_worth,
 )
 from domain.game.rules.movement import (
@@ -39,14 +37,22 @@ from domain.game.rules.movement import (
 from domain.game.rules.payments import attempt_payment
 
 
-def initial_chance_deck(rng: random.Random) -> tuple[str, ...]:
-    deck = list(DEFAULT_CHANCE_DECK)
+def initial_chance_deck(
+    rng: random.Random,
+    game_mode: GameMode = GameMode.NORMAL,
+) -> tuple[str, ...]:
+    config = get_game_config(game_mode)
+    deck = list(config.chance_deck if config.chance_deck is not None else DEFAULT_CHANCE_DECK)
     rng.shuffle(deck)
     return tuple(deck)
 
 
-def initial_chest_deck(rng: random.Random) -> tuple[str, ...]:
-    deck = list(DEFAULT_CHEST_DECK)
+def initial_chest_deck(
+    rng: random.Random,
+    game_mode: GameMode = GameMode.NORMAL,
+) -> tuple[str, ...]:
+    config = get_game_config(game_mode)
+    deck = list(config.chest_deck if config.chest_deck is not None else DEFAULT_CHEST_DECK)
     rng.shuffle(deck)
     return tuple(deck)
 
@@ -59,9 +65,15 @@ def draw_card(state: GameState, kind: CardKind, rng: random.Random) -> tuple[Gam
 
     if not deck:
         if kind == CardKind.CHANCE:
-            deck = list(DEFAULT_CHANCE_DECK)
+            config = get_game_config(state.game_mode)
+            deck = list(
+                config.chance_deck if config.chance_deck is not None else DEFAULT_CHANCE_DECK
+            )
         else:
-            deck = list(DEFAULT_CHEST_DECK)
+            config = get_game_config(state.game_mode)
+            deck = list(config.chest_deck if config.chest_deck is not None else DEFAULT_CHEST_DECK)
+        if not deck:
+            raise RuntimeError(f"{kind.value} deck is not available for {state.game_mode.value}")
         rng.shuffle(deck)
 
     card_id = deck.pop(0)
@@ -89,9 +101,11 @@ def return_jail_card_to_deck(state: GameState, kind: CardKind, card_id: str) -> 
     return state.model_copy(update={"chest_deck": deck})
 
 
-def nearest_position(from_pos: int, targets: frozenset[int]) -> int:
-    for steps in range(1, 40):
-        pos = (from_pos + steps) % 40
+def nearest_position(from_pos: int, targets: frozenset[int], game_mode: GameMode) -> int:
+    positions = get_game_config(game_mode).board_positions
+    current_index = positions.index(from_pos)
+    for steps in range(1, len(positions) + 1):
+        pos = positions[(current_index + steps) % len(positions)]
         if pos in targets:
             return pos
     raise RuntimeError("no nearest position found")
@@ -114,7 +128,11 @@ def apply_card_effect(
     effect = card.effect
 
     if isinstance(effect, AdvanceToEffect):
-        new_pos, passed_go = advance_position(player.position, _steps_to(player.position, effect.position))
+        new_pos, passed_go = advance_position(
+            player.position,
+            _steps_to(player.position, effect.position, state.game_mode),
+            state.game_mode,
+        )
         moved = player.model_copy(update={"position": new_pos})
         state, _ = _set_player(state, moved)
         events.append(_card_move_event(player, new_pos))
@@ -123,16 +141,29 @@ def apply_card_effect(
             events.append(go_event)
             moved = get_player_by_id_from_state(state, player.id)
         state, landing_events, jail = resolve_landing(
-            state, moved, dice_roll, go_salary=go_salary, recursion_depth=recursion_depth, rng=rng, jail_fine=jail_fine
+            state,
+            moved,
+            dice_roll,
+            go_salary=go_salary,
+            recursion_depth=recursion_depth,
+            rng=rng,
+            jail_fine=jail_fine,
         )
         events.extend(landing_events)
         return state, events, sent_to_jail or jail
 
     if isinstance(effect, AdvanceToNearestEffect):
-        targets = RAILROAD_POSITIONS if effect.space_type == "railroad" else UTILITY_POSITIONS
-        target = nearest_position(player.position, targets)
+        config = get_game_config(state.game_mode)
+        targets = (
+            config.railroad_positions
+            if effect.space_type == "railroad"
+            else config.utility_positions
+        )
+        target = nearest_position(player.position, targets, state.game_mode)
         new_pos, passed_go = advance_position(
-            player.position, _steps_to(player.position, target)
+            player.position,
+            _steps_to(player.position, target, state.game_mode),
+            state.game_mode,
         )
         moved = player.model_copy(update={"position": new_pos})
         state, _ = _set_player(state, moved)
@@ -155,7 +186,7 @@ def apply_card_effect(
         return state, events, sent_to_jail or jail
 
     if isinstance(effect, GoToJailEffect):
-        jailed = send_to_jail(player)
+        jailed = send_to_jail(player, state.game_mode)
         state, _ = _set_player(state, jailed)
         events.append(
             SentToJail(
@@ -167,15 +198,22 @@ def apply_card_effect(
         return state, events, True
 
     if isinstance(effect, GoBackEffect):
-        new_pos = (player.position - effect.spaces) % 40
+        positions = get_game_config(state.game_mode).board_positions
+        current_index = positions.index(player.position)
+        new_pos = positions[(current_index - effect.spaces) % len(positions)]
         moved = player.model_copy(update={"position": new_pos})
         state, _ = _set_player(state, moved)
         events.append(_card_move_event(player, new_pos))
         if recursion_depth >= CARD_LANDING_RECURSION_LIMIT:
             return state, events, sent_to_jail
         state, landing_events, jail = resolve_landing(
-            state, moved, dice_roll, go_salary=go_salary, recursion_depth=recursion_depth + 1,
-            rng=rng, jail_fine=jail_fine,
+            state,
+            moved,
+            dice_roll,
+            go_salary=go_salary,
+            recursion_depth=recursion_depth + 1,
+            rng=rng,
+            jail_fine=jail_fine,
         )
         events.extend(landing_events)
         return state, events, sent_to_jail or jail
@@ -200,6 +238,7 @@ def apply_card_effect(
             players[i] = update_player_net_worth(
                 other.model_copy(update={"balance": other.balance - pay}),
                 state.spaces,
+                state.game_mode,
             )
             total += pay
         receiver = get_player_by_id_from_state(
@@ -208,6 +247,7 @@ def apply_card_effect(
         players[idx] = update_player_net_worth(
             receiver.model_copy(update={"balance": receiver.balance + total}),
             state.spaces,
+            state.game_mode,
         )
         state = state.model_copy(update={"players": tuple(players)})
         return state, events, sent_to_jail
@@ -221,17 +261,22 @@ def apply_card_effect(
                 continue
             total += effect.amount
         payer = player.model_copy(update={"balance": player.balance - total})
-        players[idx] = update_player_net_worth(payer, state.spaces)
+        players[idx] = update_player_net_worth(payer, state.spaces, state.game_mode)
         for i, other in enumerate(players):
             if other.id == player.id or other.is_bankrupt:
                 continue
             players[i] = update_player_net_worth(
                 other.model_copy(update={"balance": other.balance + effect.amount}),
                 state.spaces,
+                state.game_mode,
             )
-        state = state.model_copy(update={"players": refresh_all_net_worth(
-            state.model_copy(update={"players": tuple(players)})
-        )})
+        state = state.model_copy(
+            update={
+                "players": refresh_all_net_worth(
+                    state.model_copy(update={"players": tuple(players)})
+                )
+            }
+        )
         return state, events, sent_to_jail
 
     if isinstance(effect, GetOutOfJailFreeEffect):
@@ -244,7 +289,7 @@ def apply_card_effect(
     if isinstance(effect, RepairsEffect):
         cost = 0
         for pos in player.owned_positions:
-            ownership = state.spaces[pos]
+            ownership = space_at(state.spaces, pos)
             if ownership.has_hotel:
                 cost += effect.per_hotel
             else:
@@ -273,12 +318,14 @@ def draw_and_apply(
         effect=card.effect,
         drawer_id=player.id,
     )
-    events: list = [CardDrawn(
-        player_id=player.id,
-        player_name=player.display_name,
-        card_id=card.id,
-        kind=card.kind.value,
-    )]
+    events: list = [
+        CardDrawn(
+            player_id=player.id,
+            player_name=player.display_name,
+            card_id=card.id,
+            kind=card.kind.value,
+        )
+    ]
     state, effect_events, sent_to_jail = apply_card_effect(
         state,
         get_player_by_id_from_state(state, player.id),
@@ -308,20 +355,23 @@ def _card_move_event(player: PlayerState, to_pos: int) -> PlayerMoved:
     )
 
 
-def _steps_to(from_pos: int, to_pos: int) -> int:
-    if to_pos >= from_pos:
-        return to_pos - from_pos
-    return 40 - from_pos + to_pos
+def _steps_to(from_pos: int, to_pos: int, game_mode: GameMode) -> int:
+    positions = get_game_config(game_mode).board_positions
+    from_index = positions.index(from_pos)
+    to_index = positions.index(to_pos)
+    if to_index >= from_index:
+        return to_index - from_index
+    return len(positions) - from_index + to_index
 
 
 def _set_player(state: GameState, player: PlayerState) -> tuple[GameState, None]:
     players = list(state.players)
     idx = _player_index(players, player.id)
-    players[idx] = update_player_net_worth(player, state.spaces)
+    players[idx] = update_player_net_worth(player, state.spaces, state.game_mode)
     new_state = state.model_copy(
-        update={"players": refresh_all_net_worth(
-            state.model_copy(update={"players": tuple(players)})
-        )}
+        update={
+            "players": refresh_all_net_worth(state.model_copy(update={"players": tuple(players)}))
+        }
     )
     return new_state, None
 

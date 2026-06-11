@@ -63,6 +63,7 @@ def _transfer_funds(
     players[payer_idx] = update_player_net_worth(
         payer.model_copy(update={"balance": payer.balance - amount}),
         state.spaces,
+        state.game_mode,
     )
     if creditor_id is not None:
         creditor_idx = next(i for i, p in enumerate(players) if p.id == creditor_id)
@@ -70,5 +71,6 @@ def _transfer_funds(
         players[creditor_idx] = update_player_net_worth(
             creditor.model_copy(update={"balance": creditor.balance + amount}),
             state.spaces,
+            state.game_mode,
         )
     return state.model_copy(update={"players": tuple(players)})

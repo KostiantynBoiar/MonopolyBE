@@ -4,12 +4,18 @@ Unlike bankruptcy (assets transfer to a creditor), on surrender the player's pro
 return to the bank — free to buy again — and their cash is split equally among the
 remaining players.
 """
+
 from __future__ import annotations
 
 from domain.game.enums import GameStatus
 from domain.game.schemas.state import GameState
 from domain.game.rules.bankruptcy import advance_turn_off_player, check_win_condition
-from domain.game.rules.helpers import get_player_by_id_from_state, refresh_all_net_worth
+from domain.game.rules.helpers import (
+    get_player_by_id_from_state,
+    refresh_all_net_worth,
+    replace_space,
+    space_at,
+)
 
 
 def resolve_surrender(state: GameState, player_id: str) -> GameState:
@@ -27,13 +33,22 @@ def resolve_surrender(state: GameState, player_id: str) -> GameState:
 
     # Properties return to the bank — unowned, unmortgaged, buildings cleared → buyable.
     for pos in player.owned_positions:
-        ownership = spaces[pos]
+        ownership = space_at(spaces, pos)
         if ownership.has_hotel:
             bank_hotels += 1
         else:
             bank_houses += ownership.houses
-        spaces[pos] = ownership.model_copy(
-            update={"owner_id": None, "houses": 0, "has_hotel": False, "is_mortgaged": False}
+        replace_space(
+            spaces,
+            pos,
+            ownership.model_copy(
+                update={
+                    "owner_id": None,
+                    "houses": 0,
+                    "has_hotel": False,
+                    "is_mortgaged": False,
+                }
+            ),
         )
 
     # Get-out-of-jail cards go back to the decks (same as bankruptcy's bank path).
@@ -50,7 +65,9 @@ def resolve_surrender(state: GameState, player_id: str) -> GameState:
         for n, ri in enumerate(recipients):
             extra = 1 if n < remainder else 0
             recipient = players[ri]
-            players[ri] = recipient.model_copy(update={"balance": recipient.balance + share + extra})
+            players[ri] = recipient.model_copy(
+                update={"balance": recipient.balance + share + extra}
+            )
 
     # Eliminate the player.
     players[idx] = player.model_copy(

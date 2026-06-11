@@ -4,13 +4,11 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
-from core.constants import MAX_SESSION_MEMBERS
 from domain.session.schemas import MemberRole, Session, SessionStatus, SessionVisibility
 from infra.mongo.sessions.document import SessionDocument, SessionMemberDocument
 from infra.mongo.sessions.mapper import (
     document_from_mongo,
     document_to_mongo,
-    to_document,
     to_domain,
 )
 
@@ -59,17 +57,14 @@ class SessionRepository:
                 {"created_at": cursor_created_at, "_id": {"$lt": cursor_id}},
             ]
 
-        cursor = (
-            self._collection.find(query)
-            .sort([("created_at", -1), ("_id", -1)])
-            .limit(limit)
-        )
+        cursor = self._collection.find(query).sort([("created_at", -1), ("_id", -1)]).limit(limit)
         return [to_domain(document_from_mongo(raw)) async for raw in cursor]
 
     async def add_member(
         self,
         session_id: str,
         member: SessionMemberDocument,
+        max_members: int,
     ) -> Session | None:
         now = datetime.now(UTC)
         raw = await self._collection.find_one_and_update(
@@ -77,7 +72,7 @@ class SessionRepository:
                 "_id": session_id,
                 "status": SessionStatus.WAITING.value,
                 "members.user_id": {"$ne": member.user_id},
-                "$expr": {"$lt": [{"$size": "$members"}, MAX_SESSION_MEMBERS]},
+                "$expr": {"$lt": [{"$size": "$members"}, max_members]},
             },
             {
                 "$push": {"members": member.model_dump()},

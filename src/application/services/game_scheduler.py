@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import asyncio
-import random
 from datetime import UTC, datetime
 
 import structlog
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
-from core.config import Settings, get_settings
+from core.config import Settings
 from domain.game.engine import apply
 from domain.game.enums import GameStatus
 from domain.game.rng import FixedClock

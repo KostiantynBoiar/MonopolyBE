@@ -20,3 +20,10 @@ class FixedClock:
 
 def roll_dice(rng: random.Random) -> tuple[int, int]:
     return rng.randint(DICE_MIN, DICE_MAX), rng.randint(DICE_MIN, DICE_MAX)
+
+
+def roll_dice_count(rng: random.Random, dice_count: int) -> tuple[int, int]:
+    die1 = rng.randint(DICE_MIN, DICE_MAX)
+    if dice_count == 1:
+        return die1, 0
+    return die1, rng.randint(DICE_MIN, DICE_MAX)
