@@ -76,7 +76,7 @@ def new_game(
             current_player_id=current_player.id,
             turn_number=1,
             round_number=1,
-            turn_deadline_ms=int(now.timestamp() * 1000) + TURN_TIMEOUT_MS,
+            turn_deadline_ms=int(now.timestamp() * 1000) + (config.turn_timeout_ms or TURN_TIMEOUT_MS),
         ),
         spaces=spaces,
         bank_houses=BANK_HOUSES,

@@ -19,7 +19,7 @@ def test_duel_game_setup_uses_local_board_and_rules(clock: FixedClock) -> None:
     )
 
     assert state.game_mode == GameMode.DUEL
-    assert [space.position for space in state.spaces] == list(range(1, 24))
+    assert [space.position for space in state.spaces] == list(range(1, 25))
     assert [player.position for player in state.players] == [1, 1]
     assert [player.balance for player in state.players] == [1000, 1000]
     assert state.chest_deck == ()

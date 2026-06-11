@@ -400,6 +400,14 @@ DUEL_BOARD: tuple[BoardSpace, ...] = (
         _rent(22, 110, 330, 800, 975, 1150),
         HOUSE_COST_RED_YELLOW,
     ),
+    _street(
+        24,
+        "Summit Drive",
+        280,
+        PropertyColor.YELLOW,
+        _rent(24, 120, 360, 850, 1025, 1200),
+        HOUSE_COST_RED_YELLOW,
+    ),
 )
 
 BOARD: tuple[BoardSpace, ...] = NORMAL_BOARD

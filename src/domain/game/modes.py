@@ -21,6 +21,7 @@ class GameConfig:
     chance_deck: tuple[str, ...] | None = None
     chest_deck: tuple[str, ...] | None = None
     sudden_death_duration_ms: int | None = None
+    turn_timeout_ms: int | None = None
 
     @property
     def board_positions(self) -> tuple[int, ...]:
@@ -63,7 +64,8 @@ _DUEL_CONFIG = GameConfig(
         "duel_chance_08",
     ),
     chest_deck=(),
-    sudden_death_duration_ms=15 * 60 * 1000,
+    sudden_death_duration_ms=20 * 60 * 1000,
+    turn_timeout_ms=30_000,
 )
 
 _CONFIGS_BY_MODE: dict[GameMode, GameConfig] = {

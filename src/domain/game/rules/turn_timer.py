@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from domain.game.constants import TURN_TIMEOUT_MS
 from domain.game.enums import TurnPhase
+from domain.game.modes import get_game_config
 from domain.game.schemas.state import GameState
 
 ACTIVE_TURN_PHASES = frozenset(
@@ -23,8 +24,10 @@ ACTIVE_TURN_PHASES = frozenset(
 
 
 def with_turn_deadline(state: GameState, now_ms: int) -> GameState:
-    """Refresh the current player's deadline to now + TURN_TIMEOUT_MS."""
-    turn = state.turn.model_copy(update={"turn_deadline_ms": now_ms + TURN_TIMEOUT_MS})
+    """Refresh the current player's deadline to now + the mode-specific (or global) turn timeout."""
+    config = get_game_config(state.game_mode)
+    timeout_ms = config.turn_timeout_ms or TURN_TIMEOUT_MS
+    turn = state.turn.model_copy(update={"turn_deadline_ms": now_ms + timeout_ms})
     return state.model_copy(update={"turn": turn})
 
 

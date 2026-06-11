@@ -7,6 +7,7 @@ services:
       - mongo_data:/data/db
     networks:
       - monopoly-dev
+    command: ["mongod", "--quiet"]
     healthcheck:
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 10s
