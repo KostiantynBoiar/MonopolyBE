@@ -12,6 +12,7 @@ from domain.game.schemas.commands import GameCommand
 from domain.game.schemas.events import GameEvent
 from domain.game.schemas.state import GameState, JailStatus, PlayerState
 from domain.game.setup import GameMember, new_game
+from domain.game.rules.helpers import space_index
 
 GO_SALARY = 200
 JAIL_FINE = 50
@@ -65,9 +66,8 @@ def with_ownership(
     **space_kwargs: Any,
 ) -> GameState:
     spaces = list(state.spaces)
-    spaces[position] = spaces[position].model_copy(
-        update={"owner_id": owner_id, **space_kwargs}
-    )
+    idx = space_index(spaces, position)
+    spaces[idx] = spaces[idx].model_copy(update={"owner_id": owner_id, **space_kwargs})
     owner = next(p for p in state.players if p.id == owner_id)
     owned = tuple(sorted(set(owner.owned_positions) | {position}))
     players = list(state.players)
@@ -125,7 +125,7 @@ def owned_by_p2(state: GameState, position: int) -> GameState:
 
 def monopoly_brown(state: GameState, player_id: str | None = None) -> GameState:
     pid = player_id or state.players[0].id
-    return with_monopoly(state, pid, (1, 3), balance=2000)
+    return with_monopoly(state, pid, (2, 4), balance=2000)
 
 
 def apply_cmd(

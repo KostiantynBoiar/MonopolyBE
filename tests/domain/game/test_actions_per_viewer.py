@@ -21,9 +21,7 @@ def test_non_current_player_has_no_actions(two_player_game: GameState) -> None:
 
 
 def test_post_roll_non_current_player_empty(two_player_game: GameState) -> None:
-    state = with_phase(
-        two_player_game, TurnPhase.POST_ROLL, pending_buy_position=None
-    )
+    state = with_phase(two_player_game, TurnPhase.POST_ROLL, pending_buy_position=None)
     other = next(p.id for p in state.players if p.id != state.turn.current_player_id)
     actions = compute_actions(state, other)
     assert actions.can_buy is False
@@ -33,7 +31,7 @@ def test_post_roll_non_current_player_empty(two_player_game: GameState) -> None:
 
 def test_auction_all_solvent_players_can_bid(two_player_game: GameState) -> None:
     p0, p1 = two_player_game.players
-    auction = AuctionState(property_position=1, time_remaining_ms=10_000, started_at_ms=0)
+    auction = AuctionState(property_position=2, time_remaining_ms=10_000, started_at_ms=0)
     state = two_player_game.model_copy(update={"auction": auction})
     state = with_phase(state, TurnPhase.AUCTION)
 
@@ -45,7 +43,7 @@ def test_auction_all_solvent_players_can_bid(two_player_game: GameState) -> None
 def test_auction_high_bidder_cannot_bid_against_self(two_player_game: GameState) -> None:
     p0, p1 = two_player_game.players
     auction = AuctionState(
-        property_position=1,
+        property_position=2,
         time_remaining_ms=10_000,
         started_at_ms=0,
         highest_bid=100,
@@ -64,7 +62,7 @@ def test_auction_insufficient_funds_cannot_bid(two_player_game: GameState) -> No
     players = list(two_player_game.players)
     players[1] = p1.model_copy(update={"balance": 50})
     auction = AuctionState(
-        property_position=1,
+        property_position=2,
         time_remaining_ms=10_000,
         started_at_ms=0,
         highest_bid=100,

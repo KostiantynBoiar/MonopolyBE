@@ -5,7 +5,6 @@ from pymongo.errors import DuplicateKeyError
 from typing_extensions import Self
 
 from core.exceptions import (
-    AlreadyMemberError,
     CannotKickSelfError,
     ForbiddenHostActionError,
     NotFoundError,
@@ -14,12 +13,12 @@ from core.exceptions import (
     SessionNotFoundError,
     SessionNotJoinableError,
 )
-from core.constants import MAX_SESSION_MEMBERS, SESSION_INVITE_CODE_MAX_RETRIES
+from core.constants import SESSION_INVITE_CODE_MAX_RETRIES
 from core.invite_code import generate_invite_code, normalize_invite_code
+from domain.game.enums import GameMode
 from domain.session.schemas import (
     MemberRole,
     Session,
-    SessionMember,
     SessionStatus,
     SessionVisibility,
 )
@@ -47,6 +46,7 @@ class SessionService:
         user_id: str,
         visibility: SessionVisibility = SessionVisibility.PUBLIC,
         ranked: bool = True,
+        game_mode: GameMode = GameMode.NORMAL,
     ) -> Session:
         user = await self._users.find_by_id(user_id)
         if user is None:
@@ -68,6 +68,7 @@ class SessionService:
                 host_user_id=user.id,
                 status=SessionStatus.WAITING,
                 visibility=visibility,
+                game_mode=game_mode,
                 ranked=ranked,
                 members=[host_member],
             )
@@ -229,7 +230,7 @@ class SessionService:
             rating=user.rating,
             calibration_complete=user.calibration_complete,
         )
-        updated = await self._sessions.add_member(session.id, member)
+        updated = await self._sessions.add_member(session.id, member, session.max_players)
         if updated is not None:
             return updated
 

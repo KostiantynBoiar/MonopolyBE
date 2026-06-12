@@ -9,6 +9,7 @@ from domain.game.enums import TurnPhase
 from domain.game.exceptions import IllegalMove
 from domain.game.rng import FixedClock
 from domain.game.rules.auction import place_bid, resolve_auction, start_auction
+from domain.game.rules.helpers import space_at
 from domain.game.schemas.commands import AdvanceAuction, PlaceBid
 from domain.game.schemas.state import AuctionBid, AuctionState, GameState
 from tests.domain.game.conftest import apply_cmd, with_phase
@@ -16,7 +17,7 @@ from tests.domain.game.conftest import apply_cmd, with_phase
 
 def _auction_state(two_player_game: GameState, clock: FixedClock) -> GameState:
     now_ms = int(clock.now().timestamp() * 1000)
-    return start_auction(two_player_game, property_position=1, now_ms=now_ms)
+    return start_auction(two_player_game, property_position=2, now_ms=now_ms)
 
 
 def test_place_bid_updates_highest(two_player_game: GameState, clock: FixedClock) -> None:
@@ -60,7 +61,7 @@ def test_resolve_auction_with_winner(two_player_game: GameState, clock: FixedClo
 
     resolved = resolve_auction(state)
     assert resolved.auction is None
-    assert resolved.spaces[1].owner_id == p1.id
+    assert space_at(resolved.spaces, 2).owner_id == p1.id
     assert resolved.players[0].balance == 1400
 
 
@@ -68,19 +69,17 @@ def test_resolve_auction_no_bids(two_player_game: GameState, clock: FixedClock) 
     state = _auction_state(two_player_game, clock)
     resolved = resolve_auction(state)
     assert resolved.auction is None
-    assert resolved.spaces[1].owner_id is None
+    assert space_at(resolved.spaces, 2).owner_id is None
 
 
 def test_advance_auction_when_expired(two_player_game: GameState) -> None:
-    expired_clock = FixedClock(
-        datetime(2026, 5, 29, 12, 1, 0, tzinfo=UTC)
-    )
+    expired_clock = FixedClock(datetime(2026, 5, 29, 12, 1, 0, tzinfo=UTC))
     started_ms = int(
         (expired_clock.now() - timedelta(milliseconds=AUCTION_DURATION_MS + 1000)).timestamp()
         * 1000
     )
     auction = AuctionState(
-        property_position=1,
+        property_position=2,
         time_remaining_ms=AUCTION_DURATION_MS,
         started_at_ms=started_ms,
         bids=(AuctionBid(player_id=two_player_game.players[0].id, amount=60),),
@@ -96,7 +95,7 @@ def test_advance_auction_when_expired(two_player_game: GameState) -> None:
 
     new_state, _ = apply_cmd(state, AdvanceAuction(), expired_clock)
     assert new_state.auction is None
-    assert new_state.spaces[1].owner_id == state.players[0].id
+    assert space_at(new_state.spaces, 2).owner_id == state.players[0].id
 
 
 def test_advance_auction_noop_when_not_expired(
@@ -107,7 +106,7 @@ def test_advance_auction_noop_when_not_expired(
     state = _auction_state(two_player_game, clock)
     new_state, events = apply_cmd(state, AdvanceAuction(), clock)
     assert new_state.auction is not None
-    assert new_state.spaces[1].owner_id is None
+    assert space_at(new_state.spaces, 2).owner_id is None
     assert events == []
 
 

@@ -26,6 +26,7 @@ from domain.game.schemas.commands import (
     UseJailCard,
 )
 from domain.game.schemas.state import TradeOffer
+from domain.game.schemas.state import GameState
 from protocol.ws.envelope import RawEnvelope, make_outbound
 from protocol.ws.schemas import (
     AnimationContinuePayload,
@@ -42,6 +43,7 @@ from protocol.ws.schemas import (
     RollDicePayload,
     SellHousePayload,
     SurrenderPayload,
+    TradeOfferPayload,
     UnmortgagePayload,
     UseJailCardPayload,
 )
@@ -107,6 +109,9 @@ async def _apply_and_publish(
     except GameVersionConflictError:
         await conn.send_error("illegal_action", "state conflict; resync from latest snapshot")
         return
+    except KeyError:
+        await conn.send_error("malformed", "Invalid payload for message type")
+        return
 
     # Per-viewer broadcast: each member receives a snapshot scoped to themselves, plus the
     # (shared) animation timeline describing how this state was reached.
@@ -116,7 +121,7 @@ async def _apply_and_publish(
         await _finish_session(conn, backplane, state)
 
 
-async def _finish_session(conn: Connection, backplane: Backplane, state) -> None:
+async def _finish_session(conn: Connection, backplane: Backplane, state: GameState) -> None:
     """Flip the session to finished, apply ratings if ranked, and broadcast session.updated."""
     from application.services.session_service import SessionService
     from application.services.rating_service import RatingService
@@ -194,9 +199,7 @@ async def handle_game_build_house(
     backplane: Backplane,
 ) -> None:
     payload = _build_adapter.validate_python(envelope.payload)
-    await _apply_and_publish(
-        conn, backplane, BuildHouse(player_id="", position=payload.position)
-    )
+    await _apply_and_publish(conn, backplane, BuildHouse(player_id="", position=payload.position))
 
 
 async def handle_game_sell_house(
@@ -205,9 +208,7 @@ async def handle_game_sell_house(
     backplane: Backplane,
 ) -> None:
     payload = _sell_adapter.validate_python(envelope.payload)
-    await _apply_and_publish(
-        conn, backplane, SellHouse(player_id="", position=payload.position)
-    )
+    await _apply_and_publish(conn, backplane, SellHouse(player_id="", position=payload.position))
 
 
 async def handle_game_mortgage(
@@ -216,9 +217,7 @@ async def handle_game_mortgage(
     backplane: Backplane,
 ) -> None:
     payload = _mortgage_adapter.validate_python(envelope.payload)
-    await _apply_and_publish(
-        conn, backplane, Mortgage(player_id="", position=payload.position)
-    )
+    await _apply_and_publish(conn, backplane, Mortgage(player_id="", position=payload.position))
 
 
 async def handle_game_unmortgage(
@@ -227,9 +226,7 @@ async def handle_game_unmortgage(
     backplane: Backplane,
 ) -> None:
     payload = _unmortgage_adapter.validate_python(envelope.payload)
-    await _apply_and_publish(
-        conn, backplane, Unmortgage(player_id="", position=payload.position)
-    )
+    await _apply_and_publish(conn, backplane, Unmortgage(player_id="", position=payload.position))
 
 
 async def handle_game_propose_trade(
@@ -239,7 +236,7 @@ async def handle_game_propose_trade(
 ) -> None:
     payload = _propose_trade_adapter.validate_python(envelope.payload)
 
-    def _to_offer(offer) -> TradeOffer:
+    def _to_offer(offer: TradeOfferPayload) -> TradeOffer:
         return TradeOffer(
             money=offer.money,
             positions=tuple(offer.positions),
@@ -289,9 +286,7 @@ async def handle_game_place_bid(
     backplane: Backplane,
 ) -> None:
     payload = _place_bid_adapter.validate_python(envelope.payload)
-    await _apply_and_publish(
-        conn, backplane, PlaceBid(player_id="", amount=payload.amount)
-    )
+    await _apply_and_publish(conn, backplane, PlaceBid(player_id="", amount=payload.amount))
 
 
 async def handle_game_declare_bankruptcy(

@@ -4,6 +4,7 @@ The backend no longer ships English prose for events; each entry carries a `type
 structured identifiers the frontend localizes. These tests pin the field mapping per event type and
 assert `text` is never populated for events.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -40,25 +41,38 @@ def _entry(event):
 
 
 def test_player_moved_dice_carries_roll() -> None:
-    e = _entry(PlayerMoved(
-        player_id="p1", player_name="Ann", player_token=TokenColor.BLUE,
-        from_position=0, to_position=7, dice_total=7,
-    ))
+    e = _entry(
+        PlayerMoved(
+            player_id="p1",
+            player_name="Ann",
+            player_token=TokenColor.BLUE,
+            from_position=1,
+            to_position=8,
+            dice_total=7,
+        )
+    )
     assert e.type == "player_moved"
     assert e.player_id == "p1"
     assert e.player_token is TokenColor.BLUE
-    assert e.tile_id == 7
+    assert e.tile_id == 8
     assert e.rolled == 7
 
 
 def test_player_moved_card_omits_roll() -> None:
     # A card-induced displacement isn't dice-driven (dice_total == 0): `rolled` must be omitted so the
     # FE renders "moved to X" rather than "rolled 0 and moved".
-    e = _entry(PlayerMoved(
-        player_id="p1", player_name="Ann", player_token=TokenColor.RED,
-        from_position=7, to_position=39, dice_total=0, reason="card",
-    ))
-    assert e.tile_id == 39
+    e = _entry(
+        PlayerMoved(
+            player_id="p1",
+            player_name="Ann",
+            player_token=TokenColor.RED,
+            from_position=8,
+            to_position=40,
+            dice_total=0,
+            reason="card",
+        )
+    )
+    assert e.tile_id == 40
     assert e.rolled is None
 
 
@@ -69,10 +83,17 @@ def test_passed_go() -> None:
 
 
 def test_rent_paid() -> None:
-    e = _entry(RentPaid(
-        payer_id="p1", payer_name="Ann", owner_id="p2", owner_name="Bo",
-        position=5, property_name="Reading RR", amount=25,
-    ))
+    e = _entry(
+        RentPaid(
+            payer_id="p1",
+            payer_name="Ann",
+            owner_id="p2",
+            owner_name="Bo",
+            position=5,
+            property_name="Reading RR",
+            amount=25,
+        )
+    )
     assert e.type == "rent_paid"
     assert e.player_id == "p1"
     assert e.opponent_id == "p2"
@@ -81,16 +102,24 @@ def test_rent_paid() -> None:
 
 
 def test_property_bought() -> None:
-    e = _entry(PropertyBought(
-        player_id="p1", player_name="Ann", position=14, property_name="Virginia Ave", price=160,
-    ))
+    e = _entry(
+        PropertyBought(
+            player_id="p1",
+            player_name="Ann",
+            position=14,
+            property_name="Virginia Ave",
+            price=160,
+        )
+    )
     assert e.type == "property_bought"
     assert e.tile_id == 14
     assert e.spent == 160
 
 
 def test_buy_declined() -> None:
-    e = _entry(BuyDeclined(player_id="p1", player_name="Ann", position=14, property_name="Virginia"))
+    e = _entry(
+        BuyDeclined(player_id="p1", player_name="Ann", position=14, property_name="Virginia")
+    )
     assert e.type == "buy_declined"
     assert e.tile_id == 14
     assert e.spent is None
@@ -116,9 +145,14 @@ def test_tax_paid() -> None:
 
 
 def test_turn_ended_points_at_next_player() -> None:
-    e = _entry(TurnEnded(
-        player_id="p1", player_name="Ann", next_player_id="p2", next_player_name="Bo",
-    ))
+    e = _entry(
+        TurnEnded(
+            player_id="p1",
+            player_name="Ann",
+            next_player_id="p2",
+            next_player_name="Bo",
+        )
+    )
     assert e.type == "turn_ended"
     assert e.player_id == "p2"
 

@@ -1,3 +1,5 @@
+from typing import Any
+
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 
 from core.config import Settings
@@ -5,17 +7,17 @@ from core.config import Settings
 
 class MongoClient:
     def __init__(self) -> None:
-        self._client: AsyncIOMotorClient | None = None
-        self._db: AsyncIOMotorDatabase | None = None
+        self._client: AsyncIOMotorClient[Any] | None = None
+        self._db: AsyncIOMotorDatabase[Any] | None = None
 
     @property
-    def client(self) -> AsyncIOMotorClient:
+    def client(self) -> AsyncIOMotorClient[Any]:
         if self._client is None:
             raise RuntimeError("MongoDB client is not connected")
         return self._client
 
     @property
-    def db(self) -> AsyncIOMotorDatabase:
+    def db(self) -> AsyncIOMotorDatabase[Any]:
         if self._db is None:
             raise RuntimeError("MongoDB database is not connected")
         return self._db

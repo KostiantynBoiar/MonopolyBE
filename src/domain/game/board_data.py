@@ -13,7 +13,7 @@ from domain.game.constants import (
     UTILITY_MORTGAGE_VALUE,
     UTILITY_PRICE,
 )
-from domain.game.enums import CornerVariant, PropertyColor, SpaceType
+from domain.game.enums import CornerVariant, GameMode, PropertyColor, SpaceType
 from domain.game.schemas.board import BoardSpace, RentTable
 
 
@@ -75,7 +75,7 @@ def _utility(position: int, name: str) -> BoardSpace:
     )
 
 
-BOARD: tuple[BoardSpace, ...] = (
+_NORMAL_BOARD_ZERO_BASED: tuple[BoardSpace, ...] = (
     BoardSpace(
         position=0,
         type=SpaceType.CORNER,
@@ -302,13 +302,66 @@ BOARD: tuple[BoardSpace, ...] = (
     ),
 )
 
-BOARD_BY_POSITION: dict[int, BoardSpace] = {space.position: space for space in BOARD}
+
+def _shift_board_positions(board: tuple[BoardSpace, ...], offset: int) -> tuple[BoardSpace, ...]:
+    return tuple(space.model_copy(update={"position": space.position + offset}) for space in board)
 
 
-def is_purchasable(position: int) -> bool:
-    space = BOARD_BY_POSITION[position]
+NORMAL_BOARD: tuple[BoardSpace, ...] = _shift_board_positions(_NORMAL_BOARD_ZERO_BASED, 1)
+
+DUEL_BOARD: tuple[BoardSpace, ...] = (
+    BoardSpace(position=1, type=SpaceType.CORNER, name="Duel Start", corner=CornerVariant.GO),
+    _street(2, "Sparks Row", 60, PropertyColor.BROWN, _rent(4, 20, 60, 180, 320, 450), HOUSE_COST_BROWN_CYAN),
+    BoardSpace(position=3, type=SpaceType.CHANCE, name="Duel Chance"),
+    _street(4, "Copper Lane", 80, PropertyColor.BROWN, _rent(6, 30, 90, 270, 400, 550), HOUSE_COST_BROWN_CYAN),
+    BoardSpace(position=5, type=SpaceType.TAX, name="Duel Tax", tax_amount=100),
+    _railroad(6, "North Shuttle"),
+    BoardSpace(position=7, type=SpaceType.CORNER, name="Duel Jail", corner=CornerVariant.JAIL),
+    _street(8, "Glass Street", 120, PropertyColor.CYAN, _rent(8, 40, 100, 300, 450, 600), HOUSE_COST_BROWN_CYAN),
+    BoardSpace(position=9, type=SpaceType.CHANCE, name="Duel Chance"),
+    _utility(10, "Power Grid"),
+    _street(11, "Foundry Way", 140, PropertyColor.PINK, _rent(10, 50, 150, 450, 625, 750), HOUSE_COST_PINK_ORANGE),
+    BoardSpace(position=12, type=SpaceType.CHANCE, name="Duel Chance"),  # ← was PARKING corner
+    BoardSpace(position=13, type=SpaceType.CORNER, name="Duel Parking", corner=CornerVariant.PARKING),
+    _street(14, "Harbor Road", 160, PropertyColor.PINK, _rent(12, 60, 180, 500, 700, 900), HOUSE_COST_PINK_ORANGE),
+    _railroad(15, "South Shuttle"),
+    _street(16, "Market Street", 180, PropertyColor.ORANGE, _rent(14, 70, 200, 550, 750, 950), HOUSE_COST_PINK_ORANGE),
+    BoardSpace(position=17, type=SpaceType.CHANCE, name="Duel Chance"),
+    _street(18, "Crown Avenue", 200, PropertyColor.ORANGE, _rent(16, 80, 220, 600, 800, 1000), HOUSE_COST_PINK_ORANGE),
+    BoardSpace(position=19, type=SpaceType.CORNER, name="Go to Duel Jail", corner=CornerVariant.GOTO_JAIL),
+    _street(20, "Redstone Plaza", 220, PropertyColor.RED, _rent(18, 90, 250, 700, 875, 1050), HOUSE_COST_RED_YELLOW),
+    BoardSpace(position=21, type=SpaceType.TAX, name="Luxury Toll", tax_amount=75),
+    _utility(22, "Water Grid"),
+    _street(23, "Victory Boulevard", 260, PropertyColor.RED, _rent(22, 110, 330, 800, 975, 1150), HOUSE_COST_RED_YELLOW),
+    _street(24, "Summit Drive", 280, PropertyColor.YELLOW, _rent(24, 120, 360, 850, 1025, 1200), HOUSE_COST_RED_YELLOW),
+)
+
+
+BOARD: tuple[BoardSpace, ...] = NORMAL_BOARD
+
+_BOARDS_BY_MODE: dict[GameMode, tuple[BoardSpace, ...]] = {
+    GameMode.NORMAL: NORMAL_BOARD,
+    GameMode.DUEL: DUEL_BOARD,
+}
+
+_BOARD_BY_MODE_AND_POSITION: dict[GameMode, dict[int, BoardSpace]] = {
+    mode: {space.position: space for space in board} for mode, board in _BOARDS_BY_MODE.items()
+}
+
+BOARD_BY_POSITION: dict[int, BoardSpace] = _BOARD_BY_MODE_AND_POSITION[GameMode.NORMAL]
+
+
+def board_for_mode(game_mode: GameMode) -> tuple[BoardSpace, ...]:
+    return _BOARDS_BY_MODE[game_mode]
+
+
+def is_purchasable(position: int, game_mode: GameMode = GameMode.NORMAL) -> bool:
+    space = _BOARD_BY_MODE_AND_POSITION[game_mode][position]
     return space.type in PURCHASABLE_TYPES
 
 
-def get_board_space(position: int) -> BoardSpace:
-    return BOARD_BY_POSITION[position]
+def get_board_space(
+    position: int,
+    game_mode: GameMode = GameMode.NORMAL,
+) -> BoardSpace:
+    return _BOARD_BY_MODE_AND_POSITION[game_mode][position]

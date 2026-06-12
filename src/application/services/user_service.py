@@ -1,5 +1,5 @@
 from datetime import UTC, datetime, timedelta
-from typing import Self
+from typing import Any, Self
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
@@ -50,7 +50,7 @@ class UserService:
         self._refresh_tokens = refresh_tokens
 
     @classmethod
-    def from_db(cls, db: AsyncIOMotorDatabase, settings: Settings) -> Self:
+    def from_db(cls, db: AsyncIOMotorDatabase[Any], settings: Settings) -> Self:
         return cls(UserRepository(db), settings, RefreshTokenRepository(db))
 
     async def leaderboard(self, *, limit: int, offset: int) -> LeaderboardResponse:

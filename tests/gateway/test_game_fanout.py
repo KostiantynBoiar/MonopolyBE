@@ -14,7 +14,7 @@ from tests.gateway.game_helpers import (
 
 def test_roll_dice_dual_broadcast(client: TestClient) -> None:
     setup = setup_two_player_game(client)
-    token = discover_current_token(client, setup)
+    discover_current_token(client, setup)
 
     def roll(host_ws, _guest_ws) -> None:
         host_ws.send_text(envelope("game.roll_dice"))

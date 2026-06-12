@@ -3,8 +3,14 @@ from __future__ import annotations
 from domain.game.board_data import get_board_space
 from domain.game.constants import MORTGAGE_INTEREST
 from domain.game.enums import GameStatus, TurnPhase
+from domain.game.modes import get_game_config
 from domain.game.schemas.state import GameState
-from domain.game.rules.helpers import get_player_by_id_from_state, refresh_all_net_worth
+from domain.game.rules.helpers import (
+    get_player_by_id_from_state,
+    refresh_all_net_worth,
+    replace_space,
+    space_at,
+)
 
 
 def resolve_bankruptcy(state: GameState, debtor_id: str) -> GameState:
@@ -32,10 +38,12 @@ def resolve_bankruptcy(state: GameState, debtor_id: str) -> GameState:
 
         new_owned = list(creditor.owned_positions)
         for pos in debtor.owned_positions:
-            ownership = spaces[pos]
-            spaces[pos] = ownership.model_copy(update={"owner_id": creditor_id})
+            ownership = space_at(spaces, pos)
+            replace_space(spaces, pos, ownership.model_copy(update={"owner_id": creditor_id}))
             if ownership.is_mortgaged:
-                cost = int((get_board_space(pos).mortgage_value or 0) * MORTGAGE_INTEREST)
+                cost = int(
+                    (get_board_space(pos, state.game_mode).mortgage_value or 0) * MORTGAGE_INTEREST
+                )
                 c = get_player_by_id_from_state(
                     state.model_copy(update={"players": tuple(players)}), creditor_id
                 )
@@ -55,8 +63,17 @@ def resolve_bankruptcy(state: GameState, debtor_id: str) -> GameState:
             chance_deck = chance_deck + ("chance_08",)
             chest_deck = chest_deck + ("chest_05",)
         for pos in debtor.owned_positions:
-            spaces[pos] = spaces[pos].model_copy(
-                update={"owner_id": None, "is_mortgaged": False, "houses": 0, "has_hotel": False}
+            replace_space(
+                spaces,
+                pos,
+                space_at(spaces, pos).model_copy(
+                    update={
+                        "owner_id": None,
+                        "is_mortgaged": False,
+                        "houses": 0,
+                        "has_hotel": False,
+                    }
+                ),
             )
 
     players[debtor_idx] = debtor.model_copy(
@@ -66,7 +83,7 @@ def resolve_bankruptcy(state: GameState, debtor_id: str) -> GameState:
             "get_out_of_jail_cards": 0,
             "jail_status": None,
             "is_bankrupt": True,
-            "position": 0,
+            "position": get_game_config(state.game_mode).start_position,
             "eliminated_at": state.turn.turn_number,
         }
     )

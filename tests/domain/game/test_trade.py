@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 
 import pytest
 
@@ -10,15 +10,16 @@ from domain.game.exceptions import IllegalMove
 from domain.game.rng import FixedClock
 from domain.game.rules.actions import compute_actions
 from domain.game.rules.bankruptcy import advance_turn_off_player
+from domain.game.rules.helpers import space_at
 from domain.game.rules.trade import expire_trade, propose_trade, respond_trade
 from domain.game.schemas.commands import BuildHouse, EndTurn, ProposeTrade, RespondTrade
-from domain.game.schemas.state import TradeOffer, TradeState
+from domain.game.schemas.state import GameState, TradeOffer, TradeState
 from tests.domain.game.conftest import apply_cmd, monopoly_brown, with_phase
 
 
 def test_propose_trade(two_player_game: GameState, clock: FixedClock) -> None:
     p1, p2 = two_player_game.players
-    # p1 owns Mediterranean (pos 1) via monopoly_brown; offer it to p2 for money.
+    # p1 owns Mediterranean (pos 2) via monopoly_brown; offer it to p2 for money.
     state = monopoly_brown(two_player_game, p1.id)
     state = with_phase(state, TurnPhase.POST_ROLL, current_player_id=p1.id)
 
@@ -26,7 +27,7 @@ def test_propose_trade(two_player_game: GameState, clock: FixedClock) -> None:
         state,
         p1.id,
         p2.id,
-        TradeOffer(money=0, positions=(1,), get_out_of_jail_cards=0),
+        TradeOffer(money=0, positions=(2,), get_out_of_jail_cards=0),
         TradeOffer(money=100, positions=(), get_out_of_jail_cards=0),
         clock.now(),
     )
@@ -43,7 +44,7 @@ def test_accept_trade_swaps_assets(two_player_game: GameState, clock: FixedClock
         state,
         p1.id,
         p2.id,
-        TradeOffer(money=0, positions=(1,), get_out_of_jail_cards=0),
+        TradeOffer(money=0, positions=(2,), get_out_of_jail_cards=0),
         TradeOffer(money=200, positions=(), get_out_of_jail_cards=0),
         clock.now(),
     )
@@ -58,7 +59,7 @@ def test_accept_trade_swaps_assets(two_player_game: GameState, clock: FixedClock
         clock.now(),
     )
     assert accepted.trade is None
-    assert accepted.spaces[1].owner_id == p2.id
+    assert space_at(accepted.spaces, 2).owner_id == p2.id
     assert accepted.players[0].balance == 2200
     assert accepted.players[1].balance == 1300
 
@@ -114,18 +115,20 @@ def test_counter_trade(two_player_game: GameState, clock: FixedClock) -> None:
     assert countered.trade.target_request.money == 100
 
 
-def test_cannot_trade_property_with_buildings(two_player_game: GameState, clock: FixedClock) -> None:
+def test_cannot_trade_property_with_buildings(
+    two_player_game: GameState, clock: FixedClock
+) -> None:
     p1, p2 = two_player_game.players
     state = monopoly_brown(two_player_game, p1.id)
     state = with_phase(state, TurnPhase.POST_ROLL, current_player_id=p1.id)
-    state, _ = apply_cmd(state, BuildHouse(player_id=p1.id, position=1), clock)
+    state, _ = apply_cmd(state, BuildHouse(player_id=p1.id, position=2), clock)
 
     with pytest.raises(IllegalMove, match="sell buildings"):
         propose_trade(
             state,
             p1.id,
             p2.id,
-            TradeOffer(positions=(1,)),
+            TradeOffer(positions=(2,)),
             TradeOffer(),
             clock.now(),
         )

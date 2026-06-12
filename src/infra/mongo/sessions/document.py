@@ -2,6 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
+from domain.game.enums import GameMode
 from domain.session.schemas import MemberRole, SessionStatus, SessionVisibility
 
 
@@ -24,6 +25,7 @@ class SessionDocument(BaseModel):
     host_user_id: str
     status: SessionStatus
     visibility: SessionVisibility
+    game_mode: GameMode = GameMode.NORMAL
     ranked: bool = True
     members: list[SessionMemberDocument]
     created_at: datetime

@@ -13,6 +13,7 @@ from core.config import get_settings
 from core.security import hash_password
 from domain.game.constants import AUCTION_DURATION_MS
 from domain.game.rules.auction import start_auction
+from domain.game.rules.helpers import space_at
 from domain.session.schemas import SessionVisibility
 from infra.mongo.games.repository import GameRepository
 from infra.mongo.users.repository import UserRepository
@@ -58,7 +59,7 @@ async def _seed_auction(db, session_id: str, *, started_at_ms: int) -> None:
     repo = GameRepository(db)
     stored = await repo.find_by_session_id(session_id)
     assert stored is not None
-    state = start_auction(stored.state, property_position=1, now_ms=started_at_ms)
+    state = start_auction(stored.state, property_position=2, now_ms=started_at_ms)
     await repo.update_with_version(stored.game_id, state, stored.version, stored.rng_state)
 
 
@@ -83,8 +84,7 @@ async def test_scheduler_skips_unexpired_auction(db) -> None:
 async def test_scheduler_resolves_expired_auction(db) -> None:
     session = await _started_game(db)
     expired_ms = int(
-        (datetime.now(UTC) - timedelta(milliseconds=AUCTION_DURATION_MS + 5000)).timestamp()
-        * 1000
+        (datetime.now(UTC) - timedelta(milliseconds=AUCTION_DURATION_MS + 5000)).timestamp() * 1000
     )
     await _seed_auction(db, session.id, started_at_ms=expired_ms)  # already expired
 
@@ -97,4 +97,4 @@ async def test_scheduler_resolves_expired_auction(db) -> None:
     stored = await GameRepository(db).find_by_session_id(session.id)
     assert stored is not None
     assert stored.state.auction is None
-    assert stored.state.spaces[1].owner_id is None
+    assert space_at(stored.state.spaces, 2).owner_id is None

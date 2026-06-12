@@ -9,7 +9,6 @@ from domain.game.schemas.commands import RollDice
 from domain.game.schemas.state import GameState
 from tests.domain.game.conftest import (
     apply_cmd,
-    monopoly_brown,
     owned_by_p2,
     with_monopoly,
     with_ownership,
@@ -20,11 +19,10 @@ from tests.domain.game.conftest import (
 
 def test_monopoly_double_rent(two_player_game: GameState) -> None:
     p2 = two_player_game.players[1]
-    state = with_monopoly(two_player_game, p2.id, (1, 3))
+    state = with_monopoly(two_player_game, p2.id, (2, 4))
     rent = calculate_rent(
-        position=1,
-        spaces=state.spaces,
-        players=state.players,
+        state=state,
+        position=2,
         dice_total=7,
     )
     assert rent == 4
@@ -32,11 +30,10 @@ def test_monopoly_double_rent(two_player_game: GameState) -> None:
 
 def test_mortgaged_property_no_rent(two_player_game: GameState) -> None:
     p2 = two_player_game.players[1]
-    state = with_ownership(two_player_game, 1, p2.id, is_mortgaged=True)
+    state = with_ownership(two_player_game, 2, p2.id, is_mortgaged=True)
     rent = calculate_rent(
-        position=1,
-        spaces=state.spaces,
-        players=state.players,
+        state=state,
+        position=2,
         dice_total=7,
     )
     assert rent == 0
@@ -46,12 +43,11 @@ def test_railroad_rent_tiers(two_player_game: GameState) -> None:
     p2 = two_player_game.players[1]
     for count, expected in enumerate([25, 50, 100, 200], start=1):
         state = two_player_game
-        for pos in (5, 15, 25, 35)[:count]:
+        for pos in (6, 16, 26, 36)[:count]:
             state = with_ownership(state, pos, p2.id)
         rent = calculate_rent(
-            position=5,
-            spaces=state.spaces,
-            players=state.players,
+            state=state,
+            position=6,
             dice_total=7,
         )
         assert rent == expected
@@ -59,20 +55,18 @@ def test_railroad_rent_tiers(two_player_game: GameState) -> None:
 
 def test_utility_rent_multipliers(two_player_game: GameState) -> None:
     p2 = two_player_game.players[1]
-    state = with_ownership(two_player_game, 12, p2.id)
+    state = with_ownership(two_player_game, 13, p2.id)
     rent_one = calculate_rent(
-        position=12,
-        spaces=state.spaces,
-        players=state.players,
+        state=state,
+        position=13,
         dice_total=7,
     )
     assert rent_one == 28
 
-    state = with_ownership(state, 28, p2.id)
+    state = with_ownership(state, 29, p2.id)
     rent_two = calculate_rent(
-        position=12,
-        spaces=state.spaces,
-        players=state.players,
+        state=state,
+        position=13,
         dice_total=7,
     )
     assert rent_two == 70
@@ -80,22 +74,21 @@ def test_utility_rent_multipliers(two_player_game: GameState) -> None:
 
 def test_house_rent_tiers(two_player_game: GameState) -> None:
     p2 = two_player_game.players[1]
-    state = with_ownership(two_player_game, 1, p2.id, houses=3)
+    state = with_ownership(two_player_game, 2, p2.id, houses=3)
     rent = calculate_rent(
-        position=1,
-        spaces=state.spaces,
-        players=state.players,
+        state=state,
+        position=2,
         dice_total=7,
     )
-    board = get_board_space(1)
+    board = get_board_space(2)
     assert board.rent is not None
     assert rent == board.rent.three_houses
 
 
 def test_income_tax(two_player_game: GameState, clock: FixedClock) -> None:
-    # Pos 3 + [1,2]=3 → pos 6 (Oriental Ave, not tax).  Start at pos 2, roll [1,1]=2 → pos 4 (Income Tax).
+    # Start at pos 3, roll [1,1]=2 -> pos 5 (Income Tax).
     p1 = two_player_game.players[0]
-    state = with_player_at(two_player_game, 0, 2)
+    state = with_player_at(two_player_game, 0, 3)
     state = with_phase(state, TurnPhase.PRE_ROLL, current_player_id=p1.id)
 
     new_state, events = apply_cmd(state, RollDice(player_id=p1.id), clock, rng_values=[1, 1])
@@ -104,9 +97,9 @@ def test_income_tax(two_player_game: GameState, clock: FixedClock) -> None:
 
 
 def test_luxury_tax(two_player_game: GameState, clock: FixedClock) -> None:
-    # Luxury Tax is pos 38. Start at pos 36 (Chance), roll [1,1]=2 → pos 38 (Luxury Tax).
+    # Luxury Tax is pos 39. Start at pos 37 (Chance), roll [1,1]=2 -> pos 39.
     p1 = two_player_game.players[0]
-    state = with_player_at(two_player_game, 0, 36)
+    state = with_player_at(two_player_game, 0, 37)
     state = with_phase(state, TurnPhase.PRE_ROLL, current_player_id=p1.id)
 
     new_state, _ = apply_cmd(state, RollDice(player_id=p1.id), clock, rng_values=[1, 1])
@@ -115,19 +108,18 @@ def test_luxury_tax(two_player_game: GameState, clock: FixedClock) -> None:
 
 def test_free_parking_no_change(two_player_game: GameState, clock: FixedClock) -> None:
     p1 = two_player_game.players[0]
-    state = with_player_at(two_player_game, 0, 18)
+    state = with_player_at(two_player_game, 0, 19)
     state = with_phase(state, TurnPhase.PRE_ROLL, current_player_id=p1.id)
 
     new_state, _ = apply_cmd(state, RollDice(player_id=p1.id), clock, rng_values=[1, 1])
     assert new_state.players[0].balance == 1500
-    assert new_state.players[0].position == 20
+    assert new_state.players[0].position == 21
 
 
 def test_rent_on_landing(two_player_game: GameState, clock: FixedClock) -> None:
-    # p2 owns Mediterranean Ave (pos 1). Roll [2,4]=6 from pos 0 → pos 6 (Oriental Ave).
-    # Use p2 owning pos 6 instead so landing triggers rent.
+    # Use p2 owning pos 7 so landing triggers rent after roll [2,4] from start.
     # Oriental Ave base rent = 6.
-    state = owned_by_p2(two_player_game, 6)
+    state = owned_by_p2(two_player_game, 7)
     p1 = state.players[0]
     state = with_phase(state, TurnPhase.PRE_ROLL, current_player_id=p1.id)
 

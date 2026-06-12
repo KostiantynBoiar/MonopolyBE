@@ -1,19 +1,20 @@
 from __future__ import annotations
 
 import asyncio
-import random
 from datetime import UTC, datetime
+from typing import Any, cast
 
 import structlog
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
-from core.config import Settings, get_settings
+from core.config import Settings
 from domain.game.engine import apply
 from domain.game.enums import GameStatus
 from domain.game.rng import FixedClock
 from domain.game.rules.auction import is_auction_expired
 from domain.game.rules.turn_timer import is_turn_expired
 from domain.game.schemas.commands import AdvanceAuction, ExpireTrade, TurnTimeout
+from domain.game.schemas.state import GameState
 from gateway.backplane import Backplane
 from infra.mongo.games.repository import GameRepository
 
@@ -25,14 +26,14 @@ class GameScheduler:
 
     def __init__(
         self,
-        db: AsyncIOMotorDatabase,
+        db: AsyncIOMotorDatabase[Any],
         backplane: Backplane,
         settings: Settings,
     ) -> None:
         self._games = GameRepository(db)
         self._backplane = backplane
         self._settings = settings
-        self._task: asyncio.Task | None = None
+        self._task: asyncio.Task[None] | None = None
         self._stop = asyncio.Event()
 
     async def start(self) -> None:
@@ -83,7 +84,7 @@ class GameScheduler:
 
         # Only act when a timer is actually due — otherwise we'd bump the version
         # and re-broadcast an unchanged state every tick.
-        command = None
+        command: AdvanceAuction | ExpireTrade | TurnTimeout | None = None
         if state.auction is not None and is_auction_expired(state, now_ms):
             command = AdvanceAuction()
         elif state.trade is not None and state.trade.expires_at <= now:
@@ -118,12 +119,12 @@ class GameScheduler:
             if updated.state.status == GameStatus.FINISHED:
                 await self._finish_session(session_id, updated.state)
 
-    async def _finish_session(self, session_id: str, state) -> None:
+    async def _finish_session(self, session_id: str, state: GameState) -> None:
         from application.services.session_service import SessionService
         from application.services.rating_service import RatingService
         from api.sessions.router import _broadcast_session_updated
 
-        db = self._games._collection.database
+        db = cast(AsyncIOMotorDatabase[Any], self._games._collection.database)
         await RatingService.from_db(db).apply_for_finished_game(session_id, state)
         session = await SessionService.from_db(db).mark_finished(session_id)
         if session is not None:

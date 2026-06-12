@@ -1,15 +1,17 @@
 from __future__ import annotations
 
-from datetime import datetime
-from uuid import uuid4
 
-from domain.game.constants import AUCTION_DURATION_MS, TRADE_DURATION_MS
-from domain.game.enums import GameStatus, TradeStatus, TurnPhase
+from domain.game.constants import AUCTION_DURATION_MS
+from domain.game.enums import TurnPhase
 from domain.game.exceptions import IllegalMove
 from domain.game.schemas.state import AuctionBid, AuctionState, GameState
 from domain.game.rules.helpers import get_player_by_id_from_state
-from domain.game.board_data import get_board_space
-from domain.game.rules.helpers import refresh_all_net_worth, update_player_net_worth
+from domain.game.rules.helpers import (
+    refresh_all_net_worth,
+    replace_space,
+    space_at,
+    update_player_net_worth,
+)
 
 
 def start_auction(state: GameState, property_position: int, now_ms: int) -> GameState:
@@ -62,12 +64,13 @@ def resolve_auction(state: GameState) -> GameState:
 
     if auction.highest_bidder_id is not None:
         bidder = get_player_by_id_from_state(state, auction.highest_bidder_id)
-        board_space = get_board_space(position)
         price = auction.highest_bid
         bidder_idx = next(i for i, p in enumerate(players) if p.id == bidder.id)
         owned = list(bidder.owned_positions)
         owned.append(position)
-        spaces[position] = spaces[position].model_copy(update={"owner_id": bidder.id})
+        replace_space(
+            spaces, position, space_at(spaces, position).model_copy(update={"owner_id": bidder.id})
+        )
         players[bidder_idx] = update_player_net_worth(
             bidder.model_copy(
                 update={
@@ -76,6 +79,7 @@ def resolve_auction(state: GameState) -> GameState:
                 }
             ),
             tuple(spaces),
+            state.game_mode,
         )
 
     # If the auction was opened by passing on a doubles roll, the deferred extra roll is

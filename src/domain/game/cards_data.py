@@ -19,17 +19,17 @@ CHANCE_CARDS: tuple[CardDef, ...] = (
     CardDef(
         id="chance_01",
         kind=CardKind.CHANCE,
-        effect=AdvanceToEffect(position=0, collect_go_bonus=True),
+        effect=AdvanceToEffect(position=1, collect_go_bonus=True),
     ),
     CardDef(
         id="chance_02",
         kind=CardKind.CHANCE,
-        effect=AdvanceToEffect(position=24, collect_go_bonus=True),
+        effect=AdvanceToEffect(position=25, collect_go_bonus=True),
     ),
     CardDef(
         id="chance_03",
         kind=CardKind.CHANCE,
-        effect=AdvanceToEffect(position=11, collect_go_bonus=True),
+        effect=AdvanceToEffect(position=12, collect_go_bonus=True),
     ),
     CardDef(
         id="chance_04",
@@ -79,12 +79,12 @@ CHANCE_CARDS: tuple[CardDef, ...] = (
     CardDef(
         id="chance_13",
         kind=CardKind.CHANCE,
-        effect=AdvanceToEffect(position=5, collect_go_bonus=True),
+        effect=AdvanceToEffect(position=6, collect_go_bonus=True),
     ),
     CardDef(
         id="chance_14",
         kind=CardKind.CHANCE,
-        effect=AdvanceToEffect(position=39, collect_go_bonus=False),
+        effect=AdvanceToEffect(position=40, collect_go_bonus=False),
     ),
     CardDef(
         id="chance_15",
@@ -102,7 +102,7 @@ COMMUNITY_CHEST_CARDS: tuple[CardDef, ...] = (
     CardDef(
         id="chest_01",
         kind=CardKind.COMMUNITY_CHEST,
-        effect=AdvanceToEffect(position=0, collect_go_bonus=True),
+        effect=AdvanceToEffect(position=1, collect_go_bonus=True),
     ),
     CardDef(
         id="chest_02",
@@ -181,8 +181,51 @@ COMMUNITY_CHEST_CARDS: tuple[CardDef, ...] = (
     ),
 )
 
+DUEL_CHANCE_CARDS: tuple[CardDef, ...] = (
+    CardDef(
+        id="duel_chance_01",
+        kind=CardKind.CHANCE,
+        effect=AdvanceToEffect(position=1, collect_go_bonus=True),
+    ),
+    CardDef(
+        id="duel_chance_02",
+        kind=CardKind.CHANCE,
+        effect=AdvanceToEffect(position=23, collect_go_bonus=False),
+    ),
+    CardDef(
+        id="duel_chance_03",
+        kind=CardKind.CHANCE,
+        effect=AdvanceToNearestEffect(space_type="railroad", pay_double=True),
+    ),
+    CardDef(
+        id="duel_chance_04",
+        kind=CardKind.CHANCE,
+        effect=AdvanceToNearestEffect(space_type="utility", pay_double=False),
+    ),
+    CardDef(
+        id="duel_chance_05",
+        kind=CardKind.CHANCE,
+        effect=CollectEffect(amount=75),
+    ),
+    CardDef(
+        id="duel_chance_06",
+        kind=CardKind.CHANCE,
+        effect=PayEffect(amount=50),
+    ),
+    CardDef(
+        id="duel_chance_07",
+        kind=CardKind.CHANCE,
+        effect=GoBackEffect(spaces=2),
+    ),
+    CardDef(
+        id="duel_chance_08",
+        kind=CardKind.CHANCE,
+        effect=GoToJailEffect(),
+    ),
+)
+
 ALL_CARDS: dict[str, CardDef] = {
-    card.id: card for card in (*CHANCE_CARDS, *COMMUNITY_CHEST_CARDS)
+    card.id: card for card in (*CHANCE_CARDS, *COMMUNITY_CHEST_CARDS, *DUEL_CHANCE_CARDS)
 }
 
 DEFAULT_CHANCE_DECK: tuple[str, ...] = tuple(c.id for c in CHANCE_CARDS)

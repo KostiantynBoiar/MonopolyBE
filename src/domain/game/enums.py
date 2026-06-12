@@ -1,6 +1,11 @@
 from enum import StrEnum
 
 
+class GameMode(StrEnum):
+    NORMAL = "normal"
+    DUEL = "duel"
+
+
 class SpaceType(StrEnum):
     CORNER = "corner"
     PROPERTY = "property"

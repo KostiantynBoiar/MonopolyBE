@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 import structlog
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
@@ -20,7 +22,7 @@ class RatingService:
         self._games = games
 
     @classmethod
-    def from_db(cls, db: AsyncIOMotorDatabase) -> "RatingService":
+    def from_db(cls, db: AsyncIOMotorDatabase[Any]) -> "RatingService":
         return cls(UserRepository(db), GameRepository(db))
 
     async def apply_for_finished_game(self, session_id: str, state: GameState) -> None:

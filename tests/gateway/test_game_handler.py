@@ -59,7 +59,7 @@ def test_roll_dice_and_end_turn(client: TestClient) -> None:
 
 def test_out_of_turn_roll_rejected(client: TestClient) -> None:
     setup = setup_two_player_game(client)
-    current_token = discover_current_token(client, setup)
+    discover_current_token(client, setup)
 
     with client.websocket_connect(
         f"/ws/sessions/{setup.session_id}",

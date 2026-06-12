@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import random
 from datetime import UTC, datetime
+from typing import Any
 from uuid import uuid4
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
@@ -15,12 +16,10 @@ from domain.game.exceptions import IllegalMove
 from domain.game.rng import FixedClock
 from domain.game.rules.actions import with_actions
 from domain.game.schemas.commands import (
-    AdvanceAuction,
     BuildHouse,
     BuyProperty,
     DeclareBankruptcy,
     EndTurn,
-    ExpireTrade,
     GameCommand,
     Mortgage,
     PassBuy,
@@ -59,8 +58,8 @@ def _lock_for(session_id: str) -> asyncio.Lock:
 def build_game_state_message(
     state: GameState,
     viewer_user_id: str | None = None,
-    timeline: list[dict] | None = None,
-) -> dict:
+    timeline: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     """Build a per-viewer `game.state` outbound frame: actions + viewer_id scoped to
     the given user, with server-only fields stripped. Pure (no IO) so it can also be
     used as the backplane's per-viewer renderer. The returned frame has no `seq` —
@@ -94,7 +93,9 @@ class GameService:
         self._users = users
 
     @classmethod
-    def from_db(cls, db: AsyncIOMotorDatabase, settings: Settings | None = None) -> GameService:
+    def from_db(
+        cls, db: AsyncIOMotorDatabase[Any], settings: Settings | None = None
+    ) -> GameService:
         return cls(
             games=GameRepository(db),
             settings=settings or get_settings(),
@@ -131,6 +132,7 @@ class GameService:
             rng=rng,
             clock=clock,
             starting_balance=self._settings.game_starting_balance,
+            game_mode=session.game_mode,
         )
         state = with_actions(state)
         rng_state = GameRepository.serialize_rng(rng)
@@ -155,7 +157,7 @@ class GameService:
         session_id: str,
         user_id: str,
         command: GameCommand,
-    ) -> tuple[GameState, list[dict]]:
+    ) -> tuple[GameState, list[dict[str, Any]]]:
         """Apply a command and return (new_state, animation_timeline). The timeline is a
         snake_case projection of the engine's ordered event list, replayed by the FE."""
         async with _lock_for(session_id):
@@ -163,6 +165,7 @@ class GameService:
             if stored is None:
                 raise GameNotFoundError(session_id)
 
+            resolved: GameCommand
             if isinstance(command, SystemCommand):
                 resolved = command
             else:
@@ -196,7 +199,9 @@ class GameService:
             timeline = build_timeline(resolved, updated.state, events)
             return updated.state, timeline
 
-    def snapshot_message(self, state: GameState, viewer_user_id: str | None = None) -> dict:
+    def snapshot_message(
+        self, state: GameState, viewer_user_id: str | None = None
+    ) -> dict[str, Any]:
         # Reconnect / initial snapshot — no animation to replay (the FE just renders the
         # current state), so the timeline is empty.
         return build_game_state_message(state, viewer_user_id)

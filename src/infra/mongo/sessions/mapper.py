@@ -1,6 +1,8 @@
 from datetime import UTC, datetime
+from typing import Any, cast
 from uuid import uuid4
 
+from domain.game.enums import GameMode
 from domain.session.schemas import Session, SessionMember, SessionStatus, SessionVisibility
 from infra.mongo.sessions.document import SessionDocument, SessionMemberDocument
 
@@ -12,6 +14,7 @@ def to_domain(doc: SessionDocument) -> Session:
         host_user_id=doc.host_user_id,
         status=doc.status,
         visibility=doc.visibility,
+        game_mode=doc.game_mode,
         ranked=doc.ranked,
         members=tuple(
             SessionMember(
@@ -35,6 +38,7 @@ def to_document(
     host_user_id: str,
     status: SessionStatus,
     visibility: SessionVisibility,
+    game_mode: GameMode = GameMode.NORMAL,
     ranked: bool = True,
     members: list[SessionMemberDocument],
     session_id: str | None = None,
@@ -48,6 +52,7 @@ def to_document(
         host_user_id=host_user_id,
         status=status,
         visibility=visibility,
+        game_mode=game_mode,
         ranked=ranked,
         members=members,
         created_at=created_at or now,
@@ -62,26 +67,27 @@ def document_to_mongo(doc: SessionDocument) -> dict[str, object]:
 
 
 def document_from_mongo(raw: dict[str, object]) -> SessionDocument:
-    members_raw = raw.get("members", [])
+    members_raw = cast(list[dict[str, Any]], raw.get("members", []))
     members = [
         SessionMemberDocument(
             user_id=str(m["user_id"]),
             display_name=str(m["display_name"]),
-            role=m["role"],  # type: ignore[arg-type]
-            joined_at=m["joined_at"],  # type: ignore[arg-type]
+            role=m["role"],
+            joined_at=cast(datetime, m["joined_at"]),
             rating=int(m.get("rating", 800)),
             calibration_complete=bool(m.get("calibration_complete", False)),
         )
-        for m in members_raw  # type: ignore[union-attr]
+        for m in members_raw
     ]
     return SessionDocument(
         id=str(raw["_id"]),
         invite_code=str(raw["invite_code"]),
         host_user_id=str(raw["host_user_id"]),
-        status=raw["status"],  # type: ignore[arg-type]
-        visibility=raw["visibility"],  # type: ignore[arg-type]
+        status=cast(Any, raw["status"]),
+        visibility=cast(Any, raw["visibility"]),
+        game_mode=cast(Any, raw.get("game_mode", GameMode.NORMAL.value)),
         ranked=bool(raw.get("ranked", True)),
         members=members,
-        created_at=raw["created_at"],  # type: ignore[arg-type]
-        updated_at=raw["updated_at"],  # type: ignore[arg-type]
+        created_at=cast(datetime, raw["created_at"]),
+        updated_at=cast(datetime, raw["updated_at"]),
     )
