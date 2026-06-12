@@ -37,7 +37,7 @@ async def session_with_game(mongo_app: FastAPI, game_service: GameService):
     from core.security import hash_password
     from infra.mongo.users.repository import UserRepository
 
-    settings = get_settings()
+    get_settings()
     suffix = uuid4().hex[:8]
     users = UserRepository(mongo_app.state.mongo.db)
     host = await users.create(

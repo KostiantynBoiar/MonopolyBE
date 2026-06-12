@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import random
+from datetime import datetime
 
 from domain.game.board_data import get_board_space, is_purchasable
 from domain.game.constants import DOUBLES_JAIL_THRESHOLD, MAX_AFK_STRIKES
@@ -43,7 +44,7 @@ from domain.game.schemas.events import (
     TurnTimedOut,
     event_to_log_entry,
 )
-from domain.game.schemas.state import DiceRoll, GameState
+from domain.game.schemas.state import DiceRoll, GameState, PlayerState
 from domain.game.rules.actions import with_actions
 from domain.game.rules.auction import is_auction_expired, place_bid, resolve_auction, start_auction
 from domain.game.rules.bankruptcy import (
@@ -140,7 +141,7 @@ def _dispatch_player_command(
     jail_fine: int,
     *,
     now_ms: int,
-    now,
+    now: datetime,
 ) -> tuple[GameState, list[GameEvent]]:
     if isinstance(command, RollDice):
         return _handle_roll_dice(state, command, rng, go_salary, jail_fine)
@@ -229,13 +230,14 @@ def _handle_roll_dice(
                 extra_roll_allowed=False,
             )
 
-        remaining = player.jail_status.turns_remaining - 1  # type: ignore[union-attr]
+        jail_status = player.jail_status
+        if jail_status is None:
+            raise IllegalMove("not in jail")
+        remaining = jail_status.turns_remaining - 1
         if remaining > 0:
             updated = player.model_copy(
                 update={
-                    "jail_status": player.jail_status.model_copy(
-                        update={"turns_remaining": remaining}
-                    )  # type: ignore[union-attr]
+                    "jail_status": jail_status.model_copy(update={"turns_remaining": remaining})
                 }
             )
             players = list(state.players)
@@ -311,7 +313,7 @@ def _handle_roll_dice(
 
 def _execute_move(
     state: GameState,
-    player,
+    player: PlayerState,
     steps: int,
     dice_roll: DiceRoll,
     is_doubles: bool,
@@ -631,7 +633,9 @@ def _handle_unmortgage(
     return unmortgage_property(state, command.player_id, command.position), []
 
 
-def _handle_propose_trade(state, command, now) -> tuple[GameState, list[GameEvent]]:
+def _handle_propose_trade(
+    state: GameState, command: ProposeTrade, now: datetime
+) -> tuple[GameState, list[GameEvent]]:
     return propose_trade(
         state,
         command.player_id,
@@ -642,7 +646,9 @@ def _handle_propose_trade(state, command, now) -> tuple[GameState, list[GameEven
     ), []
 
 
-def _handle_respond_trade(state, command, now) -> tuple[GameState, list[GameEvent]]:
+def _handle_respond_trade(
+    state: GameState, command: RespondTrade, now: datetime
+) -> tuple[GameState, list[GameEvent]]:
     return respond_trade(
         state,
         command.player_id,
@@ -653,11 +659,13 @@ def _handle_respond_trade(state, command, now) -> tuple[GameState, list[GameEven
     ), []
 
 
-def _handle_place_bid(state, command) -> tuple[GameState, list[GameEvent]]:
+def _handle_place_bid(state: GameState, command: PlaceBid) -> tuple[GameState, list[GameEvent]]:
     return place_bid(state, command.player_id, command.amount), []
 
 
-def _handle_declare_bankruptcy(state, command) -> tuple[GameState, list[GameEvent]]:
+def _handle_declare_bankruptcy(
+    state: GameState, command: DeclareBankruptcy
+) -> tuple[GameState, list[GameEvent]]:
     if state.bankruptcy is None:
         raise IllegalMove("not in bankruptcy resolution")
     if state.bankruptcy.debtor_id != command.player_id:
@@ -665,7 +673,7 @@ def _handle_declare_bankruptcy(state, command) -> tuple[GameState, list[GameEven
     return resolve_bankruptcy(state, command.player_id), []
 
 
-def _handle_surrender(state, command) -> tuple[GameState, list[GameEvent]]:
+def _handle_surrender(state: GameState, command: Surrender) -> tuple[GameState, list[GameEvent]]:
     player = get_player_by_id_from_state(state, command.player_id)
     if player.is_bankrupt:
         raise IllegalMove("player is already out of the game")
@@ -690,7 +698,7 @@ def _handle_turn_timeout(state: GameState, now_ms: int) -> tuple[GameState, list
 
     if strikes >= MAX_AFK_STRIKES:
         # Auto-surrender the repeatedly-AFK player.
-        event = PlayerSurrendered(
+        event: GameEvent = PlayerSurrendered(
             player_id=current_id, player_name=player.display_name, reason="afk"
         )
         return resolve_surrender(state, current_id), [event]
@@ -705,7 +713,7 @@ def _handle_system(
     command: SystemCommand,
     *,
     now_ms: int,
-    now,
+    now: datetime,
 ) -> tuple[GameState, list[GameEvent]]:
     if isinstance(command, AdvanceAuction):
         if state.auction is None or not is_auction_expired(state, now_ms):

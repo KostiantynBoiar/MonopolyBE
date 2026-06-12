@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, cast
 
 from fastapi import APIRouter, Depends, Query, Request
 
@@ -27,7 +27,7 @@ router = APIRouter(prefix="/sessions", tags=["sessions"])
 
 
 def get_backplane(request: Request) -> Backplane:
-    return request.app.state.backplane
+    return cast(Backplane, request.app.state.backplane)
 
 
 async def _broadcast_session_updated(backplane: Backplane, session: Session) -> None:

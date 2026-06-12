@@ -1,16 +1,17 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any, cast
 
 from domain.game.schemas.state import GameState
 from infra.mongo.games.document import GameDocument
 
 
-def state_to_dict(state: GameState) -> dict:
+def state_to_dict(state: GameState) -> dict[str, Any]:
     return state.model_dump(mode="json")
 
 
-def dict_to_state(data: dict) -> GameState:
+def dict_to_state(data: dict[str, Any]) -> GameState:
     return GameState.model_validate(data)
 
 
@@ -53,10 +54,10 @@ def document_from_mongo(raw: dict[str, object]) -> GameDocument:
     return GameDocument(
         id=str(raw["_id"]),
         session_id=str(raw["session_id"]),
-        seed=int(raw["seed"]),  # type: ignore[arg-type]
-        rng_state=list(raw["rng_state"]),  # type: ignore[arg-type]
-        version=int(raw["version"]),  # type: ignore[arg-type]
-        state=dict(raw["state"]),  # type: ignore[arg-type]
-        created_at=raw["created_at"],  # type: ignore[arg-type]
-        updated_at=raw["updated_at"],  # type: ignore[arg-type]
+        seed=int(cast(Any, raw["seed"])),
+        rng_state=list(cast(list[Any], raw["rng_state"])),
+        version=int(cast(Any, raw["version"])),
+        state=dict(cast(dict[str, Any], raw["state"])),
+        created_at=cast(datetime, raw["created_at"]),
+        updated_at=cast(datetime, raw["updated_at"]),
     )

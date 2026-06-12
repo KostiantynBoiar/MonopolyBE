@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
@@ -10,7 +11,7 @@ class RefreshTokenRepository:
     The token hash is the document `_id`, which gives the unique constraint for free; a
     TTL index on `expires_at` (see infra/mongo/indexes.py) auto-purges expired rows."""
 
-    def __init__(self, db: AsyncIOMotorDatabase) -> None:
+    def __init__(self, db: AsyncIOMotorDatabase[Any]) -> None:
         self._collection = db.refresh_tokens
 
     async def insert(self, *, token_hash: str, user_id: str, expires_at: datetime) -> None:

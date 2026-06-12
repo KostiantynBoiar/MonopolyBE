@@ -8,11 +8,13 @@ from domain.game.enums import CardKind, CornerVariant, SpaceType, TurnPhase
 from domain.game.enums import GameMode
 from domain.game.modes import get_game_config
 from domain.game.schemas.events import PassedGo, RentPaid, SentToJail, TaxPaid
+from domain.game.schemas.events import GameEvent
 from domain.game.schemas.state import (
     DiceRoll,
     GameState,
     JailStatus,
     PlayerState,
+    SpaceOwnership,
     TurnState,
 )
 from domain.game.rules.payments import attempt_payment
@@ -54,9 +56,9 @@ def resolve_landing(
     rent_multiplier: int = 1,
     rng: random.Random | None = None,
     jail_fine: int = 50,
-) -> tuple[GameState, list, bool]:
+) -> tuple[GameState, list[GameEvent], bool]:
     """Resolve landing. Returns (state, events, sent_to_jail)."""
-    events: list = []
+    events: list[GameEvent] = []
     sent_to_jail = False
     board_space = get_board_space(player.position, state.game_mode)
     players = list(state.players)
@@ -207,9 +209,9 @@ def _player_index(players: list[PlayerState], player_id: str) -> int:
 def _finalize(
     state: GameState,
     players: list[PlayerState],
-    spaces: list,
+    spaces: list[SpaceOwnership],
     turn: TurnState,
-    events: list,
+    events: list[GameEvent],
 ) -> GameState:
     new_state = state.model_copy(
         update={

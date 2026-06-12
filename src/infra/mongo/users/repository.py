@@ -1,3 +1,5 @@
+from typing import Any
+
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pymongo.errors import DuplicateKeyError
 
@@ -7,7 +9,7 @@ from infra.mongo.users.mapper import document_from_mongo, document_to_mongo, to_
 
 
 class UserRepository:
-    def __init__(self, db: AsyncIOMotorDatabase) -> None:
+    def __init__(self, db: AsyncIOMotorDatabase[Any]) -> None:
         self._collection = db.users
 
     async def find_by_email(self, email: str) -> User | None:
@@ -55,11 +57,13 @@ class UserRepository:
     ) -> None:
         await self._collection.update_one(
             {"_id": user_id},
-            {"$set": {
-                "rating": rating,
-                "games_played": games_played,
-                "calibration_complete": calibration_complete,
-            }},
+            {
+                "$set": {
+                    "rating": rating,
+                    "games_played": games_played,
+                    "calibration_complete": calibration_complete,
+                }
+            },
         )
 
     async def top_by_rating(self, *, limit: int, offset: int) -> list[User]:

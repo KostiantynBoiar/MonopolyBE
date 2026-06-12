@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from typing import Any
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pymongo import ReturnDocument
@@ -14,7 +15,7 @@ from infra.mongo.sessions.mapper import (
 
 
 class SessionRepository:
-    def __init__(self, db: AsyncIOMotorDatabase) -> None:
+    def __init__(self, db: AsyncIOMotorDatabase[Any]) -> None:
         self._collection = db.sessions
 
     async def insert(self, doc: SessionDocument) -> Session:

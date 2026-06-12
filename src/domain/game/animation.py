@@ -8,7 +8,7 @@ itself remains the source of truth.
 """
 from __future__ import annotations
 
-from typing import Literal, Union
+from typing import Any, Literal, Union
 
 from pydantic import BaseModel, ConfigDict
 
@@ -68,7 +68,7 @@ def build_timeline(
     command: GameCommand,
     state_after: GameState,
     events: list[GameEvent],
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Project an apply() result into an ordered animation timeline (snake_case dicts).
 
     Order mirrors the event stream:

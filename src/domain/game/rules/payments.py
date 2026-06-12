@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from domain.game.schemas.events import GameEvent
 from domain.game.enums import TurnPhase
 from domain.game.schemas.state import BankruptcyState, GameState
 from domain.game.rules.helpers import get_player_by_id_from_state, update_player_net_worth
@@ -11,9 +12,9 @@ def attempt_payment(
     amount: int,
     *,
     creditor_id: str | None,
-) -> tuple[GameState, list]:
+) -> tuple[GameState, list[GameEvent]]:
     """Pay amount from payer. If insufficient, enter bankrupt resolution."""
-    events: list = []
+    events: list[GameEvent] = []
     if amount <= 0:
         return state, events
 

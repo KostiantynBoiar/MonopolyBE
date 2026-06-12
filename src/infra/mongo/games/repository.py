@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import random
 from datetime import UTC, datetime
+from typing import Any, cast
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pymongo import ReturnDocument
@@ -20,15 +21,15 @@ from infra.mongo.games.mapper import (
 def _serialize_rng_state(rng: random.Random) -> list[int | tuple[int, ...]]:
     state = rng.getstate()
     version, internal_state, gauss = state
-    return [version, tuple(internal_state), gauss]  # type: ignore[return-value]
+    return cast(list[int | tuple[int, ...]], [version, tuple(internal_state), gauss])
 
 
 def _restore_rng(rng_state: list[int | tuple[int, ...]]) -> random.Random:
     rng = random.Random()
     version = rng_state[0]
-    internal = tuple(rng_state[1])  # type: ignore[arg-type]
-    gauss = rng_state[2]  # type: ignore[assignment]
-    rng.setstate((version, internal, gauss))  # type: ignore[arg-type]
+    internal = tuple(cast(tuple[int, ...], rng_state[1]))
+    gauss = cast(float | None, rng_state[2])
+    rng.setstate((cast(int, version), internal, gauss))
     return rng
 
 
@@ -52,7 +53,7 @@ class StoredGame:
 
 
 class GameRepository:
-    def __init__(self, db: AsyncIOMotorDatabase) -> None:
+    def __init__(self, db: AsyncIOMotorDatabase[Any]) -> None:
         self._collection = db.games
 
     async def insert(self, doc: GameDocument) -> StoredGame:

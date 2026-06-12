@@ -1,5 +1,6 @@
 import asyncio
 from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator
 from typing import Any
 
 import structlog
@@ -25,7 +26,7 @@ logger = structlog.get_logger(__name__)
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     setup_logging(settings)
 
@@ -39,7 +40,9 @@ async def lifespan(app: FastAPI):
     manager = ConnectionManager()
     backplane = Backplane(redis_url=settings.redis_url, manager=manager)
 
-    def _render_game_state(state_dict: dict, user_id: str, timeline: list[dict]) -> dict:
+    def _render_game_state(
+        state_dict: dict[str, Any], user_id: str, timeline: list[dict[str, Any]]
+    ) -> dict[str, Any]:
         return build_game_state_message(
             GameState.model_validate(state_dict), viewer_user_id=user_id, timeline=timeline
         )

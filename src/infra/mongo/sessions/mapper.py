@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from typing import Any, cast
 from uuid import uuid4
 
 from domain.game.enums import GameMode
@@ -66,27 +67,27 @@ def document_to_mongo(doc: SessionDocument) -> dict[str, object]:
 
 
 def document_from_mongo(raw: dict[str, object]) -> SessionDocument:
-    members_raw = raw.get("members", [])
+    members_raw = cast(list[dict[str, Any]], raw.get("members", []))
     members = [
         SessionMemberDocument(
             user_id=str(m["user_id"]),
             display_name=str(m["display_name"]),
-            role=m["role"],  # type: ignore[arg-type]
-            joined_at=m["joined_at"],  # type: ignore[arg-type]
+            role=m["role"],
+            joined_at=cast(datetime, m["joined_at"]),
             rating=int(m.get("rating", 800)),
             calibration_complete=bool(m.get("calibration_complete", False)),
         )
-        for m in members_raw  # type: ignore[union-attr]
+        for m in members_raw
     ]
     return SessionDocument(
         id=str(raw["_id"]),
         invite_code=str(raw["invite_code"]),
         host_user_id=str(raw["host_user_id"]),
-        status=raw["status"],  # type: ignore[arg-type]
-        visibility=raw["visibility"],  # type: ignore[arg-type]
-        game_mode=raw.get("game_mode", GameMode.NORMAL.value),  # type: ignore[arg-type]
+        status=cast(Any, raw["status"]),
+        visibility=cast(Any, raw["visibility"]),
+        game_mode=cast(Any, raw.get("game_mode", GameMode.NORMAL.value)),
         ranked=bool(raw.get("ranked", True)),
         members=members,
-        created_at=raw["created_at"],  # type: ignore[arg-type]
-        updated_at=raw["updated_at"],  # type: ignore[arg-type]
+        created_at=cast(datetime, raw["created_at"]),
+        updated_at=cast(datetime, raw["updated_at"]),
     )

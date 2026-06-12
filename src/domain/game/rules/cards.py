@@ -20,7 +20,7 @@ from domain.game.schemas.cards import (
     PayEffect,
     RepairsEffect,
 )
-from domain.game.schemas.events import CardDrawn, PlayerMoved, SentToJail
+from domain.game.schemas.events import CardDrawn, GameEvent, PlayerMoved, SentToJail
 from domain.game.schemas.state import DiceRoll, GameState, PlayerState
 from domain.game.rules.helpers import (
     get_player_by_id_from_state,
@@ -121,9 +121,9 @@ def apply_card_effect(
     jail_fine: int,
     rng: random.Random,
     recursion_depth: int = 0,
-) -> tuple[GameState, list, bool]:
+) -> tuple[GameState, list[GameEvent], bool]:
     """Apply a card effect. Returns (state, events, sent_to_jail)."""
-    events: list = []
+    events: list[GameEvent] = []
     sent_to_jail = False
     effect = card.effect
 
@@ -310,7 +310,7 @@ def draw_and_apply(
     go_salary: int,
     jail_fine: int,
     recursion_depth: int = 0,
-) -> tuple[GameState, list, ActiveCard, bool]:
+) -> tuple[GameState, list[GameEvent], ActiveCard, bool]:
     state, card = draw_card(state, kind, rng)
     active = ActiveCard(
         id=card.id,
@@ -318,7 +318,7 @@ def draw_and_apply(
         effect=card.effect,
         drawer_id=player.id,
     )
-    events: list = [
+    events: list[GameEvent] = [
         CardDrawn(
             player_id=player.id,
             player_name=player.display_name,
@@ -382,7 +382,7 @@ def _pay_from_player(
     amount: int,
     *,
     creditor_id: str | None,
-) -> tuple[GameState, list]:
+) -> tuple[GameState, list[GameEvent]]:
 
     return attempt_payment(state, player.id, amount, creditor_id=creditor_id)
 

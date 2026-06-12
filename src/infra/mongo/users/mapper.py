@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from typing import Any, cast
 from uuid import uuid4
 
 from domain.rating.constants import INITIAL_RATING
@@ -42,14 +43,16 @@ def document_to_mongo(doc: UserDocument) -> dict[str, object]:
 
 
 def document_from_mongo(raw: dict[str, object]) -> UserDocument:
+    rating = cast(Any, raw.get("rating", INITIAL_RATING))
+    games_played = cast(Any, raw.get("games_played", 0))
     return UserDocument(
         id=str(raw["_id"]),
         email=str(raw["email"]),
         display_name=str(raw["display_name"]),
         password_hash=str(raw["password_hash"]),
-        created_at=raw["created_at"],  # type: ignore[arg-type]
+        created_at=cast(datetime, raw["created_at"]),
         # Defaults keep users created before the rating feature readable.
-        rating=int(raw.get("rating", INITIAL_RATING)),  # type: ignore[arg-type]
-        games_played=int(raw.get("games_played", 0)),  # type: ignore[arg-type]
+        rating=int(rating),
+        games_played=int(games_played),
         calibration_complete=bool(raw.get("calibration_complete", False)),
     )

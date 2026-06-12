@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 
 import structlog
@@ -24,7 +26,7 @@ ws_router = APIRouter()
 # evicting players on transient drops — React StrictMode remounts, tab switches, brief
 # network blips. Cancelled if they reconnect within the window. (Process-local, which is
 # fine single-instance; see docs/game-protocol limitations.)
-_pending_removals: dict[tuple[str, str], asyncio.Task] = {}
+_pending_removals: dict[tuple[str, str], asyncio.Task[None]] = {}
 
 
 async def _remove_if_still_gone(
