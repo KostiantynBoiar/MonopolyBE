@@ -36,22 +36,24 @@ def to_document(
     )
 
 
-def document_to_mongo(doc: UserDocument) -> dict[str, object]:
-    payload = doc.model_dump()
+def document_to_mongo(doc: UserDocument) -> dict[str, Any]:
+    # exclude_none keeps the email sparse index valid for Telegram users
+    payload = doc.model_dump(exclude_none=True)
     payload["_id"] = payload.pop("id")
     return payload
 
 
-def document_from_mongo(raw: dict[str, object]) -> UserDocument:
+def document_from_mongo(raw: dict[str, Any]) -> UserDocument:
     rating = cast(Any, raw.get("rating", INITIAL_RATING))
     games_played = cast(Any, raw.get("games_played", 0))
+    raw_email = raw.get("email")
+    raw_hash = raw.get("password_hash")
     return UserDocument(
         id=str(raw["_id"]),
-        email=str(raw["email"]),
+        email=str(raw_email) if raw_email is not None else None,
         display_name=str(raw["display_name"]),
-        password_hash=str(raw["password_hash"]),
+        password_hash=str(raw_hash) if raw_hash is not None else None,
         created_at=cast(datetime, raw["created_at"]),
-        # Defaults keep users created before the rating feature readable.
         rating=int(rating),
         games_played=int(games_played),
         calibration_complete=bool(raw.get("calibration_complete", False)),

@@ -4,7 +4,7 @@ from typing import Any, Self
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from core.config import Settings
-from core.exceptions import InvalidCredentialsError, NotFoundError, UnauthorizedError
+from core.exceptions import DuplicateEmailError, InvalidCredentialsError, NotFoundError, UnauthorizedError
 from core.security import (
     create_access_token,
     generate_refresh_token,
@@ -17,6 +17,7 @@ from infra.mongo.refresh_tokens.repository import RefreshTokenRepository
 from infra.mongo.users.repository import UserRepository
 from protocol.rest.auth import (
     AuthResponse,
+    LinkEmailRequest,
     LoginRequest,
     MeResponse,
     RegisterRequest,
@@ -104,6 +105,21 @@ class UserService:
 
     async def logout(self, refresh_token: str) -> None:
         await self._refresh_tokens.revoke(hash_refresh_token(refresh_token))
+
+    async def link_email(self, user_id: str, data: LinkEmailRequest) -> MeResponse:
+        """Add an email + password to an account that was created via Telegram."""
+        # Reject if the email is taken by a different account.
+        existing = await self._repository.find_by_email(data.email)
+        if existing is not None and existing.id != user_id:
+            raise DuplicateEmailError()
+        password_hash = hash_password(data.password)
+        await self._repository.set_email_and_password(
+            user_id, email=data.email.lower(), password_hash=password_hash
+        )
+        user = await self._repository.find_by_id(user_id)
+        if user is None:
+            raise NotFoundError("User not found")
+        return MeResponse(user=_to_public(user))
 
     async def get_me(self, user_id: str) -> MeResponse:
         user = await self._repository.find_by_id(user_id)
