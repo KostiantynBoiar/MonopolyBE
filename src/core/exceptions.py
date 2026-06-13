@@ -87,3 +87,23 @@ class GameVersionConflictError(AppError):
             status_code=409,
         )
         self.session_id = session_id
+
+
+class InvalidTelegramLoginError(AppError):
+    def __init__(self, message: str = "Invalid Telegram login") -> None:
+        super().__init__(message, status_code=401)
+
+
+class TelegramUnavailableError(AppError):
+    def __init__(self, message: str = "Telegram service unavailable") -> None:
+        super().__init__(message, status_code=503)
+
+
+class AlreadyLinkedError(AppError):
+    def __init__(self, message: str = "Identity already linked") -> None:
+        super().__init__(message, status_code=409)
+
+
+class AlreadyHasEmailError(AppError):
+    def __init__(self, message: str = "Account already has an email address") -> None:
+        super().__init__(message, status_code=409)

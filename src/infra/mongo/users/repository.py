@@ -1,10 +1,13 @@
+from datetime import UTC, datetime
 from typing import Any
+from uuid import uuid4
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pymongo.errors import DuplicateKeyError
 
-from core.exceptions import DuplicateEmailError
+from core.exceptions import AlreadyHasEmailError, DuplicateEmailError
 from domain.user.schemas import User
+from infra.mongo.users.document import UserDocument
 from infra.mongo.users.mapper import document_from_mongo, document_to_mongo, to_document, to_domain
 
 
@@ -29,6 +32,9 @@ class UserRepository:
         if raw is None:
             return None
         doc = document_from_mongo(raw)
+        if doc.password_hash is None:
+            # Telegram-only account — cannot authenticate with a password
+            return None
         return to_domain(doc), doc.password_hash
 
     async def create(self, email: str, display_name: str, password_hash: str) -> User:
@@ -42,6 +48,35 @@ class UserRepository:
         except DuplicateKeyError as exc:
             raise DuplicateEmailError("Email already registered") from exc
         return to_domain(doc)
+
+    async def create_telegram_user(self, *, display_name: str) -> User:
+        doc = UserDocument(
+            id=str(uuid4()),
+            email=None,
+            display_name=display_name,
+            password_hash=None,
+            created_at=datetime.now(UTC),
+        )
+        await self._collection.insert_one(document_to_mongo(doc))
+        return to_domain(doc)
+
+    async def set_email_and_password(
+        self, user_id: str, *, email: str, password_hash: str
+    ) -> None:
+        """Attach an email + password to an account that currently has neither."""
+        try:
+            result = await self._collection.update_one(
+                {"_id": user_id, "email": None},
+                {"$set": {"email": email, "password_hash": password_hash}},
+            )
+        except DuplicateKeyError as exc:
+            raise DuplicateEmailError("Email already registered") from exc
+        if result.matched_count == 0:
+            # The document either doesn't exist or already has an email.
+            user_raw = await self._collection.find_one({"_id": user_id})
+            if user_raw is None:
+                return  # caller handles missing user
+            raise AlreadyHasEmailError()
 
     async def find_by_ids(self, user_ids: list[str]) -> dict[str, User]:
         if not user_ids:

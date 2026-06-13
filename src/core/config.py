@@ -27,6 +27,14 @@ class Settings(BaseSettings):
     go_salary: int = 200
     jail_fine: int = 50
 
+    telegram_client_id: str = ""
+    telegram_client_secret: str = ""
+    telegram_redirect_uri: str = ""
+    telegram_issuer: str = "https://oauth.telegram.org"
+    telegram_jwks_url: str = "https://oauth.telegram.org/.well-known/jwks.json"
+    frontend_telegram_callback_url: str = "http://localhost:3000/auth/telegram/callback"
+    frontend_telegram_connect_url: str = "http://localhost:3000/settings/telegram"
+
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
 
